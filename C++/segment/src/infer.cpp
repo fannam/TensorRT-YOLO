@@ -13,7 +13,7 @@
 using namespace nvinfer1;
 
 
-YoloDetector::YoloDetector(const std::string trtFile): trtFile_(trtFile)
+YoloDetector::YoloDetector(const std::string trtFile, const std::string onnxFile): trtFile_(trtFile), onnxFile_(onnxFile)
 {
     gLogger = Logger(ILogger::Severity::kERROR);
     cudaSetDevice(kGpuId);
@@ -23,17 +23,29 @@ YoloDetector::YoloDetector(const std::string trtFile): trtFile_(trtFile)
     // load engine
     get_engine();
 
+    // TRT10: detect tensor names (input=3D image, proto=4D [1,32,H,W], output=3D [1,116,8400])
+    for (int i = 0; i < engine->getNbIOTensors(); i++) {
+        const char* name = engine->getIOTensorName(i);
+        if (engine->getTensorIOMode(name) == TensorIOMode::kINPUT) {
+            inputName_ = name;
+        } else {
+            auto dims = engine->getTensorShape(name);
+            if (dims.nbDims == 4) protoName_ = name;
+            else outputName_ = name;
+        }
+    }
+
     context = engine->createExecutionContext();
-    context->setBindingDimensions(0, Dims32 {4, {1, 3, kInputH, kInputW}});
+    context->setInputShape(inputName_.c_str(), Dims {4, {1, 3, kInputH, kInputW}});
 
     // get engine output info
-    protoOutDims = context->getBindingDimensions(1);  // proto [1 32 160 160]
+    protoOutDims = context->getTensorShape(protoName_.c_str());  // proto [1 32 160 160]
     int protoOutputSize = 1;  // 32 * 160 * 160
     for (int i = 0; i < protoOutDims.nbDims; i++){
         protoOutputSize *= protoOutDims.d[i];
     }
 
-    Dims32 outDims = context->getBindingDimensions(2);  // [1 116 8400], 116 = 4 + 80 + 32 = bbox + class + mask coefficients
+    Dims outDims = context->getTensorShape(outputName_.c_str());  // [1 116 8400], 116 = 4 + 80 + 32 = bbox + class + mask coefficients
     OUTPUT_CANDIDATES = outDims.d[2];  // 8400
     int outputSize = 1;  // 116 * 8400
     for (int i = 0; i < outDims.nbDims; i++){
@@ -71,10 +83,10 @@ void YoloDetector::get_engine(){
         std::cout << "Succeeded loading engine!" << std::endl;
     } else {
         IBuilder *            builder     = createInferBuilder(gLogger);
-        INetworkDefinition *  network     = builder->createNetworkV2(1U << int(NetworkDefinitionCreationFlag::kEXPLICIT_BATCH));
+        INetworkDefinition *  network     = builder->createNetworkV2(0);
         IOptimizationProfile* profile     = builder->createOptimizationProfile();
         IBuilderConfig *      config      = builder->createBuilderConfig();
-        config->setMaxWorkspaceSize(1 << 30);
+        config->setMemoryPoolLimit(MemoryPoolType::kWORKSPACE, 1 << 30);
         IInt8Calibrator *     pCalibrator = nullptr;
         if (bFP16Mode){
             config->setFlag(BuilderFlag::kFP16);
@@ -87,7 +99,7 @@ void YoloDetector::get_engine(){
         }
 
         nvonnxparser::IParser* parser = nvonnxparser::createParser(*network, gLogger);
-        if (!parser->parseFromFile(onnxFile.c_str(), int(gLogger.reportableSeverity))){
+        if (!parser->parseFromFile(onnxFile_.c_str(), int(gLogger.reportableSeverity))){
             std::cout << std::string("Failed parsing .onnx file!") << std::endl;
             for (int i = 0; i < parser->getNbErrors(); ++i){
                 auto *error = parser->getError(i);
@@ -98,9 +110,9 @@ void YoloDetector::get_engine(){
         std::cout << std::string("Succeeded parsing .onnx file!") << std::endl;
 
         ITensor* inputTensor = network->getInput(0);
-        profile->setDimensions(inputTensor->getName(), OptProfileSelector::kMIN, Dims32 {4, {1, 3, kInputH, kInputW}});
-        profile->setDimensions(inputTensor->getName(), OptProfileSelector::kOPT, Dims32 {4, {1, 3, kInputH, kInputW}});
-        profile->setDimensions(inputTensor->getName(), OptProfileSelector::kMAX, Dims32 {4, {1, 3, kInputH, kInputW}});
+        profile->setDimensions(inputTensor->getName(), OptProfileSelector::kMIN, Dims {4, {1, 3, kInputH, kInputW}});
+        profile->setDimensions(inputTensor->getName(), OptProfileSelector::kOPT, Dims {4, {1, 3, kInputH, kInputW}});
+        profile->setDimensions(inputTensor->getName(), OptProfileSelector::kMAX, Dims {4, {1, 3, kInputH, kInputW}});
         config->addOptimizationProfile(profile);
 
         IHostMemory *engineString = builder->buildSerializedNetwork(*network, *config);
@@ -152,7 +164,10 @@ std::vector<Detection> YoloDetector::inference(cv::Mat& img){
     preprocess(img, (float*)vBufferD[0], kInputH, kInputW, stream);
 
     // tensorrt inference
-    context->enqueueV2(vBufferD.data(), stream, nullptr);
+    context->setTensorAddress(inputName_.c_str(), vBufferD[0]);
+    context->setTensorAddress(protoName_.c_str(), vBufferD[1]);
+    context->setTensorAddress(outputName_.c_str(), vBufferD[2]);
+    context->enqueueV3(stream);
 
     // transpose [116 8400] convert to [8400 116]
     transpose((float*)vBufferD[2], transposeDevide, OUTPUT_CANDIDATES, 4 + kNumClass + 32, stream);
@@ -161,7 +176,7 @@ std::vector<Detection> YoloDetector::inference(cv::Mat& img){
     // cuda nms
     nms(decodeDevice, kNmsThresh, kMaxNumOutputBbox, kNumBoxElement, stream);
     CHECK(cudaMemcpyAsync(outputData, decodeDevice, (1 + kMaxNumOutputBbox * kNumBoxElement) * sizeof(float), cudaMemcpyDeviceToHost, stream));
-    // cudaStreamSynchronize(stream);
+    CHECK(cudaStreamSynchronize(stream));
 
     std::vector<Detection> vDetections;
     int count = std::min((int)outputData[0], kMaxNumOutputBbox);
@@ -188,8 +203,35 @@ std::vector<Detection> YoloDetector::inference(cv::Mat& img){
     return vDetections;
 }
 
+double YoloDetector::inference_model_only(cv::Mat& img){
+    if (img.empty()) return 0.0;
+
+    preprocess(img, (float*)vBufferD[0], kInputH, kInputW, stream);
+
+    context->setTensorAddress(inputName_.c_str(), vBufferD[0]);
+    context->setTensorAddress(protoName_.c_str(), vBufferD[1]);
+    context->setTensorAddress(outputName_.c_str(), vBufferD[2]);
+
+    cudaEvent_t start;
+    cudaEvent_t stop;
+    CHECK(cudaEventCreate(&start));
+    CHECK(cudaEventCreate(&stop));
+
+    CHECK(cudaEventRecord(start, stream));
+    context->enqueueV3(stream);
+    CHECK(cudaEventRecord(stop, stream));
+    CHECK(cudaEventSynchronize(stop));
+
+    float milliseconds = 0.0f;
+    CHECK(cudaEventElapsedTime(&milliseconds, start, stop));
+    CHECK(cudaEventDestroy(start));
+    CHECK(cudaEventDestroy(stop));
+
+    return milliseconds;
+}
+
 void YoloDetector::process_mask(
-    float* protoDevice, Dims32 protoOutDims, std::vector<Detection>& vDetections, 
+    float* protoDevice, Dims protoOutDims, std::vector<Detection>& vDetections, 
     int kInputH, int kInputW, cv::Mat& img, cudaStream_t stream
 ){
     int protoC = protoOutDims.d[1];  // default 32

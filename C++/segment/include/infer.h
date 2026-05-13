@@ -12,21 +12,23 @@ using namespace nvinfer1;
 class YoloDetector
 {
 public:
-    YoloDetector(const std::string trtFile);
+    YoloDetector(const std::string trtFile, const std::string onnxFile);
     ~YoloDetector();
     std::vector<Detection> inference(cv::Mat& img);
+    double inference_model_only(cv::Mat& img);
     static void draw_image(cv::Mat& img, std::vector<Detection>& inferResult, bool drawBbox=true);
 
 private:
     void get_engine();
     static void process_mask(
-        float* protoDevice, Dims32 protoOutDims, std::vector<Detection>& vDetections, 
+        float* protoDevice, Dims protoOutDims, std::vector<Detection>& vDetections, 
         int kInputH, int kInputW, cv::Mat& img, cudaStream_t stream
     );
 
 private:
     Logger              gLogger;
     std::string         trtFile_;
+    std::string         onnxFile_;
 
     ICudaEngine *       engine;
     IRuntime *          runtime;
@@ -40,7 +42,11 @@ private:
     float *             decodeDevice;
 
     int                 OUTPUT_CANDIDATES;  // 8400: 80 * 80 + 40 * 40 + 20 * 20
-    Dims32              protoOutDims;  // proto shape [1 32 160 160]
+    Dims              protoOutDims;  // proto shape [1 32 160 160]
+
+    std::string         inputName_;
+    std::string         protoName_;
+    std::string         outputName_;
 };
 
 #endif  // INFER_H

@@ -1,53 +1,193 @@
+#include <algorithm>
+#include <array>
+#include <numeric>
+#include <string>
+#include <onnxruntime_cxx_api.h>
+
 #include "utils.h"
 #include "infer.h"
 
 
-int run(char* imageDir){
-    // get image file names for inferencing
+// CPU letterbox + normalize -> CHW float32, aligned with TensorRT preprocess.
+static void preprocess_cpu(const cv::Mat& img, float* data, int th, int tw) {
+    float r = std::min((float)tw / img.cols, (float)th / img.rows);
+    int nw = (int)(img.cols * r);
+    int nh = (int)(img.rows * r);
+    int pw = (tw - nw) / 2;
+    int ph = (th - nh) / 2;
+
+    cv::Mat resized, padded(th, tw, CV_8UC3, cv::Scalar(114, 114, 114));
+    cv::resize(img, resized, cv::Size(nw, nh));
+    resized.copyTo(padded(cv::Rect(pw, ph, nw, nh)));
+
+    cv::Mat rgb, fp;
+    cv::cvtColor(padded, rgb, cv::COLOR_BGR2RGB);
+    rgb.convertTo(fp, CV_32F, 1.0 / 255.0);
+
+    std::vector<cv::Mat> ch(3);
+    cv::split(fp, ch);
+    for (int c = 0; c < 3; c++) {
+        memcpy(data + c * th * tw, ch[c].data, th * tw * sizeof(float));
+    }
+}
+
+static std::string basename_without_ext(const std::string& path) {
+    size_t slash = path.find_last_of("/\\");
+    std::string name = slash == std::string::npos ? path : path.substr(slash + 1);
+    size_t dot = name.find_last_of('.');
+    return dot == std::string::npos ? name : name.substr(0, dot);
+}
+
+static std::string resolve_onnx_path(const std::string& modelArg) {
+    if (modelArg.find('/') != std::string::npos || modelArg.find('\\') != std::string::npos) {
+        return modelArg;
+    }
+    if (modelArg.size() >= 5 && modelArg.substr(modelArg.size() - 5) == ".onnx") {
+        return "../onnx_model/" + modelArg;
+    }
+    return "../onnx_model/" + modelArg + ".onnx";
+}
+
+static int run_trt_benchmark(
+    char* imageDir,
+    const std::string& onnxPath,
+    const std::string& trtPath,
+    const std::string& modelName,
+    std::vector<double>& model_times,
+    std::vector<double>& full_times
+) {
     std::vector<std::string> file_names;
-    if (read_files_in_dir(imageDir, file_names) < 0) {
-        std::cout << "read_files_in_dir failed." << std::endl;
-        return -1;
+    if (read_files_in_dir(imageDir, file_names) < 0) return -1;
+    std::sort(file_names.begin(), file_names.end());
+
+    YoloDetector detector(trtPath, onnxPath);
+
+    cv::Mat dummy(kInputH, kInputW, CV_8UC3, cv::Scalar(114, 114, 114));
+    for (int i = 0; i < 10; i++) {
+        detector.inference_model_only(dummy);
+    }
+    for (int i = 0; i < 2; i++) {
+        detector.inference(dummy);
     }
 
-    // create detector, and load engine plan
-    std::string trtFile = "./yolo11s.plan";
-    YoloDetector detector(trtFile);
-
-    // inference
-    for (long unsigned int i = 0; i < file_names.size(); i++){
-        std::string imagePath = std::string(imageDir) + "/" + file_names[i];
-        cv::Mat img = cv::imread(imagePath, cv::IMREAD_COLOR);
+    for (auto& fn : file_names) {
+        cv::Mat img = cv::imread(std::string(imageDir) + "/" + fn, cv::IMREAD_COLOR);
         if (img.empty()) continue;
 
-        auto start = std::chrono::system_clock::now();
-        
-        std::vector<Detection> res = detector.inference(img);
+        double model_ms = detector.inference_model_only(img);
+        model_times.push_back(model_ms);
 
-        auto end = std::chrono::system_clock::now();
-        int cost = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-        std::cout << "Image: " << file_names[i] << " cost: " << cost << " ms."  << std::endl;
+        auto t0 = std::chrono::high_resolution_clock::now();
+        auto res = detector.inference(img);
+        auto t1 = std::chrono::high_resolution_clock::now();
 
-        // draw result on image
+        double full_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+        full_times.push_back(full_ms);
+
+        std::cout << "[TRT] " << fn
+                  << " model-only: " << model_ms
+                  << " ms, full: " << full_ms << " ms\n";
+
         YoloDetector::draw_image(img, res);
-
-        cv::imwrite("_" + file_names[i], img);
-
-        // std::cout << "Image: " << file_names[i] << " done." << std::endl;
+        cv::imwrite(modelName + "_" + fn, img);
     }
-
     return 0;
 }
 
+static int run_ort(char* imageDir, const std::string& onnxPath, std::vector<double>& times_out) {
+    std::vector<std::string> file_names;
+    if (read_files_in_dir(imageDir, file_names) < 0) return -1;
+    std::sort(file_names.begin(), file_names.end());
 
-int main(int argc, char *argv[])
-{
-    if (argc != 2) {
-        printf("This program need 1 argument\n");
-        printf("Usage: ./main [image dir]\n");
-        printf("Example: ./main ./images\n");
+    Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "ort_bench");
+    Ort::SessionOptions opts;
+    opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+
+    OrtCUDAProviderOptions cuda_opts{};
+    cuda_opts.device_id = kGpuId;
+    opts.AppendExecutionProvider_CUDA(cuda_opts);
+
+    Ort::Session session(env, onnxPath.c_str(), opts);
+
+    Ort::AllocatorWithDefaultOptions alloc;
+    std::string in_name = session.GetInputNameAllocated(0, alloc).get();
+    size_t output_count = session.GetOutputCount();
+    std::vector<std::string> output_name_storage;
+    std::vector<const char*> output_names;
+    output_name_storage.reserve(output_count);
+    output_names.reserve(output_count);
+    for (size_t i = 0; i < output_count; i++) {
+        output_name_storage.emplace_back(session.GetOutputNameAllocated(i, alloc).get());
+        output_names.push_back(output_name_storage.back().c_str());
+    }
+
+    const char* input_names[] = { in_name.c_str() };
+    std::vector<float> input_buf(3 * kInputH * kInputW);
+    std::array<int64_t, 4> input_shape{1, 3, kInputH, kInputW};
+    Ort::MemoryInfo mem = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+
+    for (int i = 0; i < 10; i++) {
+        cv::Mat dummy(kInputH, kInputW, CV_8UC3, cv::Scalar(114, 114, 114));
+        preprocess_cpu(dummy, input_buf.data(), kInputH, kInputW);
+        auto tensor = Ort::Value::CreateTensor<float>(mem, input_buf.data(), input_buf.size(),
+                                                      input_shape.data(), input_shape.size());
+        session.Run(Ort::RunOptions{nullptr}, input_names, &tensor, 1, output_names.data(), output_names.size());
+    }
+
+    for (auto& fn : file_names) {
+        cv::Mat img = cv::imread(std::string(imageDir) + "/" + fn, cv::IMREAD_COLOR);
+        if (img.empty()) continue;
+
+        preprocess_cpu(img, input_buf.data(), kInputH, kInputW);
+        auto tensor = Ort::Value::CreateTensor<float>(mem, input_buf.data(), input_buf.size(),
+                                                      input_shape.data(), input_shape.size());
+
+        auto t0 = std::chrono::high_resolution_clock::now();
+        session.Run(Ort::RunOptions{nullptr}, input_names, &tensor, 1, output_names.data(), output_names.size());
+        auto t1 = std::chrono::high_resolution_clock::now();
+
+        double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+        times_out.push_back(ms);
+        std::cout << "[ORT] " << fn << " model-only: " << ms << " ms\n";
+    }
+    return 0;
+}
+
+int main(int argc, char* argv[]) {
+    if (argc < 3 || argc > 4) {
+        printf("Usage: ./main [image dir] [onnx file|model name] [plan file optional]\n");
+        printf("Example: ./main ../images yolo11s\n");
+        printf("Example: ./main ../images ../onnx_model/yolo11s.onnx ./yolo11s.plan\n");
         return 1;
     }
 
-    return run(argv[1]);
+    std::string onnxPath = resolve_onnx_path(argv[2]);
+    std::string modelName = basename_without_ext(onnxPath);
+    std::string trtPath = argc == 4 ? argv[3] : "./" + modelName + ".plan";
+    std::vector<double> trt_model_times, trt_full_times, ort_times;
+
+    std::cout << "ONNX: " << onnxPath << "\n";
+    std::cout << "TensorRT plan: " << trtPath << "\n";
+    std::cout << "Output prefix: " << modelName << "_\n";
+
+    std::cout << "\n=== TensorRT (" << (bFP16Mode ? "FP16" : "FP32") << ") ===\n";
+    run_trt_benchmark(argv[1], onnxPath, trtPath, modelName, trt_model_times, trt_full_times);
+
+    std::cout << "\n=== ONNX Runtime (CUDA) ===\n";
+    run_ort(argv[1], onnxPath, ort_times);
+
+    auto avg = [](const std::vector<double>& v) {
+        if (v.empty()) return 0.0;
+        double s = std::accumulate(v.begin(), v.end(), 0.0);
+        return s / v.size();
+    };
+
+    std::cout << "\n=== Summary (avg after explicit warm-up) ===\n";
+    std::cout << "TRT model-only avg: " << avg(trt_model_times) << " ms\n";
+    std::cout << "ORT model-only avg: " << avg(ort_times) << " ms\n";
+    std::cout << "TRT full pipeline avg: " << avg(trt_full_times) << " ms\n";
+    std::cout << "Model-only speedup TRT/ORT: "
+              << avg(ort_times) / std::max(avg(trt_model_times), 1.0) << "x\n";
+
+    return 0;
 }

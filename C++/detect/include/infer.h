@@ -15,6 +15,7 @@ class YoloDetector
 public:
     YoloDetector(
         const std::string trtFile,
+        const std::string onnxFile,
         int gpuId=kGpuId,
         float nmsThresh=kNmsThresh,
         float confThresh=kConfThresh,
@@ -22,6 +23,7 @@ public:
     );
     ~YoloDetector();
     std::vector<Detection> inference(cv::Mat& img);
+    double inference_model_only(cv::Mat& img);
     static void draw_image(cv::Mat& img, std::vector<Detection>& inferResult);
 
 private:
@@ -30,6 +32,7 @@ private:
 private:
     Logger              gLogger;
     std::string         trtFile_;
+    std::string         onnxFile_;
 
     int                 numClass_;
     float               nmsThresh_;
@@ -47,6 +50,9 @@ private:
     float *             decodeDevice;
 
     int                 OUTPUT_CANDIDATES;  // 8400: 80 * 80 + 40 * 40 + 20 * 20
+
+    std::string         inputName_;
+    std::string         outputName_;
 };
 
 #endif  // INFER_H

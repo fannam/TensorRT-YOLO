@@ -2,9 +2,10 @@ cmake_minimum_required(VERSION 3.10)
 
 project(yolo11_detect)
 
-add_definitions(-std=c++11)
 add_definitions(-DAPI_EXPORTS)
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_BUILD_TYPE release)
 
 # include and link dirs of cuda and tensorrt, you need adapt them if yours are different
@@ -34,6 +35,10 @@ file(GLOB_RECURSE SRCS ${PROJECT_SOURCE_DIR}/src/*.cpp ${PROJECT_SOURCE_DIR}/src
 cuda_add_library(yolo_infer SHARED ${SRCS})
 target_link_libraries(yolo_infer cudart nvinfer nvonnxparser ${OpenCV_LIBS})
 
+# ============ onnxruntime ============
+include_directories(/usr/local/include)
+link_directories(/usr/local/lib)
+
 # ======== main execute file ========
 add_executable(main ${PROJECT_SOURCE_DIR}/main.cpp)
-target_link_libraries(main yolo_infer)
+target_link_libraries(main yolo_infer onnxruntime)

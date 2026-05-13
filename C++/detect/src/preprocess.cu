@@ -1,4 +1,5 @@
 ﻿#include "preprocess.h"
+#include "public.h"
 
 
 __global__ void letterbox(const uchar* srcData, const int srcH, const int srcW, uchar* tgtData, 
@@ -9,18 +10,18 @@ __global__ void letterbox(const uchar* srcData, const int srcH, const int srcW, 
     int idx = ix + iy * tgtW;
     int idx3 = idx * 3;
 
-    if ( ix > tgtW || iy > tgtH ) return;  // thread out of target range
+    if ( ix >= tgtW || iy >= tgtH ) return;  // thread out of target range
     // gray region on target image
     if ( iy < startY || iy > (startY + rszH - 1) ) {
-        tgtData[idx3] = 128;
-        tgtData[idx3 + 1] = 128;
-        tgtData[idx3 + 2] = 128;
+        tgtData[idx3] = 114;
+        tgtData[idx3 + 1] = 114;
+        tgtData[idx3 + 2] = 114;
         return;
     }
     if ( ix < startX || ix > (startX + rszW - 1) ){
-        tgtData[idx3] = 128;
-        tgtData[idx3 + 1] = 128;
-        tgtData[idx3 + 2] = 128;
+        tgtData[idx3] = 114;
+        tgtData[idx3 + 1] = 114;
+        tgtData[idx3 + 2] = 114;
         return;
     }
 
@@ -103,11 +104,11 @@ void preprocess(const cv::Mat& srcImg, float* dstDevData, const int dstHeight, c
 
     // middle image data on device ( for bilinear resize )
     uchar* midDevData;
-    cudaMalloc((void**)&midDevData, sizeof(uchar) * dstElements);
+    CHECK(cudaMalloc((void**)&midDevData, sizeof(uchar) * dstElements));
     // source images data on device
     uchar* srcDevData;
-    cudaMalloc((void**)&srcDevData, sizeof(uchar) * srcElements);
-    cudaMemcpyAsync(srcDevData, srcImg.data, sizeof(uchar) * srcElements, cudaMemcpyHostToDevice, stream);
+    CHECK(cudaMalloc((void**)&srcDevData, sizeof(uchar) * srcElements));
+    CHECK(cudaMemcpyAsync(srcDevData, srcImg.data, sizeof(uchar) * srcElements, cudaMemcpyHostToDevice, stream));
 
     // calculate width and height after resize
     int w, h, x, y;
@@ -131,10 +132,9 @@ void preprocess(const cv::Mat& srcImg, float* dstDevData, const int dstHeight, c
 
     // letterbox and resize
     letterbox<<<gridSize, blockSize, 0, stream>>>(srcDevData, srcHeight, srcWidth, midDevData, dstHeight, dstWidth, h, w, y, x);
-    cudaDeviceSynchronize();
     // hwc to chw / bgr to rgb / normalize
     process<<<gridSize, blockSize, 0, stream>>>(midDevData, dstDevData, dstHeight, dstWidth);
 
-    cudaFree(srcDevData);
-    cudaFree(midDevData);
+    CHECK(cudaFree(srcDevData));
+    CHECK(cudaFree(midDevData));
 }
