@@ -51,6 +51,8 @@ private:
 
     int                 OUTPUT_CANDIDATES;  // 8400: 80 * 80 + 40 * 40 + 20 * 20
 
+    int                 inputIndex_;
+    int                 outputIndex_;
     std::string         inputName_;
     std::string         outputName_;
 };

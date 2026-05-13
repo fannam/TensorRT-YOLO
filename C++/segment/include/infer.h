@@ -44,6 +44,9 @@ private:
     int                 OUTPUT_CANDIDATES;  // 8400: 80 * 80 + 40 * 40 + 20 * 20
     Dims              protoOutDims;  // proto shape [1 32 160 160]
 
+    int                 inputIndex_;
+    int                 protoIndex_;
+    int                 outputIndex_;
     std::string         inputName_;
     std::string         protoName_;
     std::string         outputName_;

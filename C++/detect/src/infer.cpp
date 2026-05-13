@@ -29,6 +29,11 @@ YoloDetector::YoloDetector(
     // load engine
     get_engine();
 
+    context = engine->createExecutionContext();
+
+#if NV_TENSORRT_MAJOR >= 10
+    inputIndex_ = 0;
+    outputIndex_ = 1;
     for (int i = 0; i < engine->getNbIOTensors(); i++) {
         const char* name = engine->getIOTensorName(i);
         if (engine->getTensorIOMode(name) == TensorIOMode::kINPUT) {
@@ -38,11 +43,26 @@ YoloDetector::YoloDetector(
         }
     }
 
-    context = engine->createExecutionContext();
     context->setInputShape(inputName_.c_str(), Dims {4, {1, 3, kInputH, kInputW}});
 
     // get engine output info
     Dims outDims = context->getTensorShape(outputName_.c_str());  // [1, 84, 8400]
+#else
+    inputIndex_ = 0;
+    outputIndex_ = 1;
+    for (int i = 0; i < engine->getNbBindings(); i++) {
+        if (engine->bindingIsInput(i)) {
+            inputIndex_ = i;
+        } else {
+            outputIndex_ = i;
+        }
+    }
+
+    context->setBindingDimensions(inputIndex_, Dims {4, {1, 3, kInputH, kInputW}});
+
+    // get engine output info
+    Dims outDims = context->getBindingDimensions(outputIndex_);  // [1, 84, 8400]
+#endif
     OUTPUT_CANDIDATES = outDims.d[2];  // 8400
     int outputSize = 1;  // 84 * 8400
     for (int i = 0; i < outDims.nbDims; i++){
@@ -53,8 +73,8 @@ YoloDetector::YoloDetector(
     outputData = new float[1 + kMaxNumOutputBbox * kNumBoxElement];
     // prepare input and output space on device
     vBufferD.resize(2, nullptr);
-    CHECK(cudaMalloc(&vBufferD[0], 3 * kInputH * kInputW * sizeof(float)));
-    CHECK(cudaMalloc(&vBufferD[1], outputSize * sizeof(float)));
+    CHECK(cudaMalloc(&vBufferD[inputIndex_], 3 * kInputH * kInputW * sizeof(float)));
+    CHECK(cudaMalloc(&vBufferD[outputIndex_], outputSize * sizeof(float)));
 
     CHECK(cudaMalloc(&transposeDevice, outputSize * sizeof(float)));
     CHECK(cudaMalloc(&decodeDevice, (1 + kMaxNumOutputBbox * kNumBoxElement) * sizeof(float)));
@@ -79,10 +99,20 @@ void YoloDetector::get_engine(){
         std::cout << "Succeeded loading engine!" << std::endl;
     } else {
         IBuilder *            builder     = createInferBuilder(gLogger);
-        INetworkDefinition *  network     = builder->createNetworkV2(0);
+        INetworkDefinition *  network     = builder->createNetworkV2(
+#if NV_TENSORRT_MAJOR >= 10
+            0
+#else
+            1U << int(NetworkDefinitionCreationFlag::kEXPLICIT_BATCH)
+#endif
+        );
         IOptimizationProfile* profile     = builder->createOptimizationProfile();
         IBuilderConfig *      config      = builder->createBuilderConfig();
+#if NV_TENSORRT_MAJOR >= 10
         config->setMemoryPoolLimit(MemoryPoolType::kWORKSPACE, 1 << 30);
+#else
+        config->setMaxWorkspaceSize(1 << 30);
+#endif
         IInt8Calibrator *     pCalibrator = nullptr;
         if (bFP16Mode){
             config->setFlag(BuilderFlag::kFP16);
@@ -157,15 +187,19 @@ std::vector<Detection> YoloDetector::inference(cv::Mat& img){
     if (img.empty()) return {};
 
     // put input on device, then letterbox、bgr to rgb、hwc to chw、normalize.
-    preprocess(img, (float*)vBufferD[0], kInputH, kInputW, stream);
+    preprocess(img, (float*)vBufferD[inputIndex_], kInputH, kInputW, stream);
 
     // tensorrt inference
-    context->setTensorAddress(inputName_.c_str(), vBufferD[0]);
-    context->setTensorAddress(outputName_.c_str(), vBufferD[1]);
+#if NV_TENSORRT_MAJOR >= 10
+    context->setTensorAddress(inputName_.c_str(), vBufferD[inputIndex_]);
+    context->setTensorAddress(outputName_.c_str(), vBufferD[outputIndex_]);
     context->enqueueV3(stream);
+#else
+    context->enqueueV2(vBufferD.data(), stream, nullptr);
+#endif
 
     // transpose [1 84 8400] convert to [1 8400 84]
-    transpose((float*)vBufferD[1], transposeDevice, OUTPUT_CANDIDATES, numClass_ + 4, stream);
+    transpose((float*)vBufferD[outputIndex_], transposeDevice, OUTPUT_CANDIDATES, numClass_ + 4, stream);
     // convert [1 8400 84] to [1 7001]
     decode(transposeDevice, decodeDevice, OUTPUT_CANDIDATES, numClass_, confThresh_, kMaxNumOutputBbox, kNumBoxElement, stream);
     // cuda nms
@@ -198,7 +232,7 @@ std::vector<Detection> YoloDetector::inference(cv::Mat& img){
 double YoloDetector::inference_model_only(cv::Mat& img){
     if (img.empty()) return 0.0;
 
-    preprocess(img, (float*)vBufferD[0], kInputH, kInputW, stream);
+    preprocess(img, (float*)vBufferD[inputIndex_], kInputH, kInputW, stream);
 
     cudaEvent_t start;
     cudaEvent_t stop;
@@ -206,9 +240,13 @@ double YoloDetector::inference_model_only(cv::Mat& img){
     CHECK(cudaEventCreate(&stop));
 
     CHECK(cudaEventRecord(start, stream));
-    context->setTensorAddress(inputName_.c_str(), vBufferD[0]);
-    context->setTensorAddress(outputName_.c_str(), vBufferD[1]);
+#if NV_TENSORRT_MAJOR >= 10
+    context->setTensorAddress(inputName_.c_str(), vBufferD[inputIndex_]);
+    context->setTensorAddress(outputName_.c_str(), vBufferD[outputIndex_]);
     context->enqueueV3(stream);
+#else
+    context->enqueueV2(vBufferD.data(), stream, nullptr);
+#endif
     CHECK(cudaEventRecord(stop, stream));
     CHECK(cudaEventSynchronize(stop));
 
