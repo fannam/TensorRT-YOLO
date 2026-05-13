@@ -2,9 +2,10 @@ cmake_minimum_required(VERSION 3.10)
 
 project(yolo11_pose)
 
-add_definitions(-std=c++11)
 add_definitions(-DAPI_EXPORTS)
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_BUILD_TYPE release)
 
 # include and link dirs of cuda and tensorrt, you need adapt them if yours are different

@@ -32,7 +32,8 @@ int run(char* videoPath){
 
     // YOLOv8 predictor
     std::string trtFile = "../detect/build/yolo11s.plan";
-    YoloDetector detector(trtFile, 0, 0.45, 0.01);
+    std::string onnxFile = "../detect/onnx_model/yolo11s.onnx";
+    YoloDetector detector(trtFile, onnxFile, 0, 0.45, 0.01);
 
     // ByteTrack tracker
     BYTETracker tracker(fps, 30);

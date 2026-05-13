@@ -12,9 +12,10 @@ using namespace nvinfer1;
 class YoloDetector
 {
 public:
-    YoloDetector(const std::string trtFile);
+    YoloDetector(const std::string trtFile, const std::string onnxFile);
     ~YoloDetector();
     std::vector<Detection> inference(cv::Mat& img);
+    double inference_model_only(cv::Mat& img);
     static void draw_image(cv::Mat& img, std::vector<Detection>& inferResult, bool drawBbox=true, bool kptLine=true);
 
 private:
@@ -23,6 +24,7 @@ private:
 private:
     Logger              gLogger;
     std::string         trtFile_;
+    std::string         onnxFile_;
 
     ICudaEngine *       engine;
     IRuntime *          runtime;
@@ -36,6 +38,11 @@ private:
     float *             decodeDevice;
 
     int                 OUTPUT_CANDIDATES;  // 8400: 80 * 80 + 40 * 40 + 20 * 20
+
+    int                 inputIndex_;
+    int                 outputIndex_;
+    std::string         inputName_;
+    std::string         outputName_;
 };
 
 #endif  // INFER_H
