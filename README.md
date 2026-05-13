@@ -1,72 +1,90 @@
-# TensorRT 部署 YOLO11 目标检测、关键点检测、实例分割、目标跟踪
+# TensorRT deploy YOLO11 — detect, pose, segment, tracking
 
-## 一. 项目简介
+> **Based on original work by [emptysoal](https://github.com/emptysoal/TensorRT-YOLO11).**
+> This fork integrates support for **TensorRT 10**, running in parallel with the original **TensorRT 8** codebase.
+> Tested on **Jetson AGX Orin**.
 
-- 基于 `TensorRT-v8` ，部署`YOLO11` 目标检测、关键点检测、实例分割、目标跟踪 4 项任务；
-- 支持在 `Jetson` 系列、 `Linux x86_64` 服务器上部署；
+## Introduction
 
-- 无需安装支持`cuda`的`OpenCV`，前后处理的张量操作都是作者通过`cuda`编程实现；
-- 模型转换方式：`.pth` -> `.onnx` -> `.plan(.engine)`；
-- 作者使用 `Python` 和 `C++` 2 种 `api` 分别做了实现；
-- 均采用了面向对象的方式，便于结合到其他项目当中；
-- `C++` 版本的还会编译为动态链接库，便于在其他项目种作为接口调用；
+- Deploy `YOLO11` detect, pose, segment, and tracking tasks using TensorRT;
+- Supports **TensorRT 8** and **TensorRT 10** (parallel support);
+- Supports `Jetson` series (tested on **Jetson AGX Orin**) and `Linux x86_64`;
+- No CUDA-supported OpenCV required — all tensor operations for pre/post-processing are implemented via CUDA programming;
+- Model conversion: `.pt` -> `.onnx` -> `.plan(.engine)`;
+- Both `Python` and `C++` APIs implemented;
+- Object-oriented design — easy to integrate into other projects;
+- `C++` version compiles to a shared library for use as an interface in other projects;
 
-## 二. 项目效果
+## Effect
 
-|               原图                |               目标检测                |
+|            input image            |                detect                 |
 | :-------------------------------: | :-----------------------------------: |
 |      ![004](assets/005.jpeg)      | ![004_detect](assets/005_detect.jpeg) |
-|          **关键点检测**           |             **实例分割**              |
+|             **pose**              |              **segment**              |
 | ![004_pose](assets/005_pose.jpeg) |    ![004_seg](assets/005_seg.jpeg)    |
 
-- ByteTrack目标跟踪
+- ByteTrack
 
 ![result](./assets/result.gif)
 
-## 三. 推理速度
+## Inference speed
 
 |        | detect | pose  | segment |
 | :----: | :----: | :---: | :-----: |
 |  C++   |  3 ms  | 4 ms  |  6 ms   |
 | python | 10 ms  | 13 ms |  45 ms  |
 
-- 这里的推理时间包含前处理、模型推理、后处理
-- 这里基于 `x86_64 Linux ` 服务器，`Ubuntu`系统，显卡为`GeForce RTX 2080 Ti`
+- Inference time includes pre-processing, model inference, and post-processing
+- Benchmarked on `x86_64 Linux`, `Ubuntu`, GPU: `GeForce RTX 2080 Ti`
 
-## 四. 环境配置
+## Environment
 
-1. 基本要求：
+### Requirements
 
-- `TensorRT 8.0+`
+- `TensorRT 8.0+` or `TensorRT 10.0+`
 - `OpenCV 3.4.0+`
 
-**如果基本要求已满足，可直接进入各目录下运行各任务**
+### Linux x86_64 — Docker (recommended)
 
-**环境构建可以参考下面内容：**
+For TensorRT 8:
+```bash
+docker pull nvcr.io/nvidia/tensorrt:22.04-py3
+```
 
-2. 如果是 `Linux x86_64` 服务器上，建议使用 `docker`
+| CUDA   | cuDNN    | TensorRT | Python |
+| ------ | -------- | -------- | ------ |
+| 11.6.2 | 8.4.0.27 | 8.2.4.2  | 3.8.10 |
 
-- 具体环境构建，可参考这个链接 [构建TensorRT环境](https://github.com/emptysoal/tensorrt-experiment) 的环境构建部分，也是作者的项目
+For TensorRT 10:
+```bash
+docker pull nvcr.io/nvidia/tensorrt:24.05-py3
+```
 
-3. 如果是边缘设备，如：`Jetson Nano`
+Then install OpenCV manually inside the container.
 
-- 烧录 `Jetpack 4.6.1 ` 系统镜像，网上烧录镜像的资料还是很多的，这里就不赘述了
-- `Jetpack 4.6.1 ` 系统镜像原装环境如下：
+### Jetson AGX Orin
+
+- Flash `JetPack 6.x` system image
+- Default environment:
 
 | CUDA | cuDNN | TensorRT | OpenCV |
 | ---- | ----- | -------- | ------ |
-| 10.2 | 8.2   | 8.2.1    | 4.1.1  |
+| 11.4 | 8.6   | 8.5.2    | 4.5.4  |
 
-## 五. 项目运行
+## Run
 
-- 本项目`Python`和`C++`目录下均包含`detect`、`pose` 和 `segment`；
-- 按照各自目录下的 `README` 分别实现目标检测、关键点检测、实例分割 、目标跟踪 4 种任务。
+`detect`, `pose`, and `segment` directories exist under both `python` and `C++`.
+Follow the `README` in each subdirectory to run each task.
 
-- [C++ api detect](https://github.com/emptysoal/TensorRT-YOLO11/tree/main/C%2B%2B/detect)
-- [C++ api pose](https://github.com/emptysoal/TensorRT-YOLO11/tree/main/C%2B%2B/pose)
-- [C++ api segment](https://github.com/emptysoal/TensorRT-YOLO11/tree/main/C%2B%2B/segment)
-- [C++ api track](https://github.com/emptysoal/TensorRT-YOLO11/tree/main/C%2B%2B/)
-- [Python api detect](https://github.com/emptysoal/TensorRT-YOLO11/tree/main/python/detect)
-- [Python api pose](https://github.com/emptysoal/TensorRT-YOLO11/tree/main/python/pose)
-- [Python api segment](https://github.com/emptysoal/TensorRT-YOLO11/tree/main/python/segment)
-- [Python api track](https://github.com/emptysoal/TensorRT-YOLO11/tree/main/python)
+- [C++ api detect](C%2B%2B/detect)
+- [C++ api pose](C%2B%2B/pose)
+- [C++ api segment](C%2B%2B/segment)
+- [C++ api track](C%2B%2B/)
+- [Python api detect](python/detect)
+- [Python api pose](python/pose)
+- [Python api segment](python/segment)
+- [Python api track](python/)
+
+## Credits
+
+Original project: [emptysoal/TensorRT-YOLO11](https://github.com/emptysoal/TensorRT-YOLO11)
