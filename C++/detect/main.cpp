@@ -2,12 +2,15 @@
 #include <array>
 #include <numeric>
 #include <string>
+#ifdef ENABLE_ONNXRUNTIME
 #include <onnxruntime_cxx_api.h>
+#endif
 
 #include "utils.h"
 #include "infer.h"
 
 
+#ifdef ENABLE_ONNXRUNTIME
 // CPU letterbox + normalize -> CHW float32, aligned with TensorRT preprocess.
 static void preprocess_cpu(const cv::Mat& img, float* data, int th, int tw) {
     float r = std::min((float)tw / img.cols, (float)th / img.rows);
@@ -30,6 +33,7 @@ static void preprocess_cpu(const cv::Mat& img, float* data, int th, int tw) {
         memcpy(data + c * th * tw, ch[c].data, th * tw * sizeof(float));
     }
 }
+#endif
 
 static std::string basename_without_ext(const std::string& path) {
     size_t slash = path.find_last_of("/\\");
@@ -95,6 +99,7 @@ static int run_trt_benchmark(
 }
 
 static int run_ort(char* imageDir, const std::string& onnxPath, std::vector<double>& times_out) {
+#ifdef ENABLE_ONNXRUNTIME
     std::vector<std::string> file_names;
     if (read_files_in_dir(imageDir, file_names) < 0) return -1;
     std::sort(file_names.begin(), file_names.end());
@@ -151,6 +156,13 @@ static int run_ort(char* imageDir, const std::string& onnxPath, std::vector<doub
         std::cout << "[ORT] " << fn << " model-only: " << ms << " ms\n";
     }
     return 0;
+#else
+    (void)imageDir;
+    (void)onnxPath;
+    (void)times_out;
+    std::cout << "[ORT] skipped; build with -DENABLE_ONNXRUNTIME=ON to enable ONNX Runtime benchmark\n";
+    return 0;
+#endif
 }
 
 int main(int argc, char* argv[]) {
@@ -164,7 +176,10 @@ int main(int argc, char* argv[]) {
     std::string onnxPath = resolve_onnx_path(argv[2]);
     std::string modelName = basename_without_ext(onnxPath);
     std::string trtPath = argc == 4 ? argv[3] : "./" + modelName + ".plan";
-    std::vector<double> trt_model_times, trt_full_times, ort_times;
+    std::vector<double> trt_model_times, trt_full_times;
+#ifdef ENABLE_ONNXRUNTIME
+    std::vector<double> ort_times;
+#endif
 
     std::cout << "ONNX: " << onnxPath << "\n";
     std::cout << "TensorRT plan: " << trtPath << "\n";
@@ -173,8 +188,10 @@ int main(int argc, char* argv[]) {
     std::cout << "\n=== TensorRT (" << (bFP16Mode ? "FP16" : "FP32") << ") ===\n";
     run_trt_benchmark(argv[1], onnxPath, trtPath, modelName, trt_model_times, trt_full_times);
 
+#ifdef ENABLE_ONNXRUNTIME
     std::cout << "\n=== ONNX Runtime (CUDA) ===\n";
     run_ort(argv[1], onnxPath, ort_times);
+#endif
 
     auto avg = [](const std::vector<double>& v) {
         if (v.empty()) return 0.0;
@@ -184,10 +201,14 @@ int main(int argc, char* argv[]) {
 
     std::cout << "\n=== Summary (avg after explicit warm-up) ===\n";
     std::cout << "TRT model-only avg: " << avg(trt_model_times) << " ms\n";
+#ifdef ENABLE_ONNXRUNTIME
     std::cout << "ORT model-only avg: " << avg(ort_times) << " ms\n";
+#endif
     std::cout << "TRT full pipeline avg: " << avg(trt_full_times) << " ms\n";
+#ifdef ENABLE_ONNXRUNTIME
     std::cout << "Model-only speedup TRT/ORT: "
               << avg(ort_times) / std::max(avg(trt_model_times), 1.0) << "x\n";
+#endif
 
     return 0;
 }
