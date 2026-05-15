@@ -4,16 +4,16 @@
 #include <string>
 #include "config.h"
 
-
+// Detection của pose mang cả bbox lẫn keypoint:
+// - kpts: dữ liệu thô còn ở hệ toạ độ input 640x640
+// - vKpts: dữ liệu đã scale về ảnh gốc để draw/tracking tiếp theo dùng ngay
 struct Detection
 {
-    // x1, y1, x2, y2
-    float bbox[4];  // bbox both before and after scale
+    float bbox[4];
     float conf;
     int classId;
-    float kpts[kNumKpt * kKptDims];  // key points: 17 * 3 = 51, before scale to original image
-    std::vector<std::vector<float>> vKpts;  // key points after scale: {{x, y, visible}, {x, y, visible}, {x, y, visible}, ...}
+    float kpts[kNumKpt * kKptDims];
+    std::vector<std::vector<float>> vKpts;
 };
-
 
 #endif  // TYPES_H

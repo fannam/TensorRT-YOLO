@@ -4,16 +4,16 @@
 #include <string>
 #include <vector>
 
-
+// Dữ liệu segment sau decode:
+// - mask: 32 hệ số coefficient đi kèm mỗi detection
+// - maskMatrix: mask đã được ghép với proto, crop theo bbox và resize về ảnh gốc
 struct Detection
 {
-    // x1, y1, x2, y2
     float bbox[4];
     float conf;
     int classId;
-    float mask[32];  // mask coefficient
-    std::vector<float> maskMatrix;  // 2D mask after mask coefficient multiply proto, and scale to original image
+    float mask[32];
+    std::vector<float> maskMatrix;
 };
-
 
 #endif  // TYPES_H

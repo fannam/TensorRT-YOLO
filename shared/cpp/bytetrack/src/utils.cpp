@@ -3,6 +3,7 @@
 
 vector<STrack*> BYTETracker::joint_stracks(vector<STrack*> &tlista, vector<STrack> &tlistb)
 {
+	// Hợp hai tập track theo track_id, tránh duplicate khi cùng một track xuất hiện ở nhiều pool tạm.
 	map<int, int> exists;
 	vector<STrack*> res;
 	for (int i = 0; i < tlista.size(); i++)
@@ -45,6 +46,7 @@ vector<STrack> BYTETracker::joint_stracks(vector<STrack> &tlista, vector<STrack>
 
 vector<STrack> BYTETracker::sub_stracks(vector<STrack> &tlista, vector<STrack> &tlistb)
 {
+	// Hiệu hai tập theo track_id: giữ track có trong A nhưng không còn trong B.
 	map<int, STrack> stracks;
 	for (int i = 0; i < tlista.size(); i++)
 	{
@@ -71,6 +73,8 @@ vector<STrack> BYTETracker::sub_stracks(vector<STrack> &tlista, vector<STrack> &
 
 void BYTETracker::remove_duplicate_stracks(vector<STrack> &resa, vector<STrack> &resb, vector<STrack> &stracksa, vector<STrack> &stracksb)
 {
+	// Nếu một tracked track và một lost track chồng lấn quá mạnh, giữ track "già" hơn
+	// vì nó thường có lịch sử ổn định hơn.
 	vector<vector<float> > pdist = iou_distance(stracksa, stracksb);
 	vector<pair<int, int> > pairs;
 	for (int i = 0; i < pdist.size(); i++)
@@ -117,6 +121,7 @@ void BYTETracker::remove_duplicate_stracks(vector<STrack> &resa, vector<STrack> 
 void BYTETracker::linear_assignment(vector<vector<float> > &cost_matrix, int cost_matrix_size, int cost_matrix_size_size, float thresh,
 	vector<vector<int> > &matches, vector<int> &unmatched_a, vector<int> &unmatched_b)
 {
+	// Cost matrix rỗng nghĩa là một phía không có phần tử để ghép.
 	if (cost_matrix.size() == 0)
 	{
 		for (int i = 0; i < cost_matrix_size; i++)
@@ -131,6 +136,7 @@ void BYTETracker::linear_assignment(vector<vector<float> > &cost_matrix, int cos
 	}
 
 	vector<int> rowsol; vector<int> colsol;
+	// lapjv trả nghiệm tối ưu toàn cục cho bài toán assignment với cost_limit=thresh.
 	float c = lapjv(cost_matrix, rowsol, colsol, true, thresh);
 	for (int i = 0; i < rowsol.size(); i++)
 	{
@@ -158,6 +164,7 @@ void BYTETracker::linear_assignment(vector<vector<float> > &cost_matrix, int cos
 
 vector<vector<float> > BYTETracker::ious(vector<vector<float> > &atlbrs, vector<vector<float> > &btlbrs)
 {
+	// Tính ma trận IoU giữa hai danh sách bbox tlbr.
 	vector<vector<float> > ious;
 	if (atlbrs.size()*btlbrs.size() == 0)
 		return ious;
@@ -168,7 +175,6 @@ vector<vector<float> > BYTETracker::ious(vector<vector<float> > &atlbrs, vector<
 		ious[i].resize(btlbrs.size());
 	}
 
-	//bbox_ious
 	for (int k = 0; k < btlbrs.size(); k++)
 	{
 		vector<float> ious_tmp;
@@ -201,6 +207,7 @@ vector<vector<float> > BYTETracker::ious(vector<vector<float> > &atlbrs, vector<
 
 vector<vector<float> > BYTETracker::iou_distance(vector<STrack*> &atracks, vector<STrack> &btracks, int &dist_size, int &dist_size_size)
 {
+	// ByteTrack dùng cost = 1 - IoU, nên ghép tốt tương ứng cost nhỏ.
 	vector<vector<float> > cost_matrix;
 	if (atracks.size() * btracks.size() == 0)
 	{
@@ -266,6 +273,7 @@ vector<vector<float> > BYTETracker::iou_distance(vector<STrack> &atracks, vector
 double BYTETracker::lapjv(const vector<vector<float> > &cost, vector<int> &rowsol, vector<int> &colsol,
 	bool extend_cost, float cost_limit, bool return_cost)
 {
+	// Wrapper chuyển ma trận cost hình chữ nhật sang dạng vuông mở rộng để solver lapjv xử lý.
 	vector<vector<float> > cost_c;
 	cost_c.assign(cost.begin(), cost.end());
 

@@ -5,23 +5,13 @@
 #include <cuda_runtime.h>
 #include "config.h"
 
+// Đổi head output từ [56, 8400] sang [8400, 56] để mỗi candidate nằm liền mạch.
 void transpose(float* src, float* dst, int numBboxes, int numElements, cudaStream_t stream);
-/*
-    transpose [56 8400] convert to [8400 56]
-src:          Tensor, dim is [56 8400]
-dst:          Tensor, dim is [8400 56]
-numBboxes:    number of bboxes: default 8400
-numElements:  center_x, center_y, width, height, 1 classes, 51 key points
-*/
 
+// Decode bbox + class + toàn bộ vector keypoint của mỗi candidate.
 void decode(float* src, float* dst, int numBboxes, int numClasses, int numKpts, float confThresh, int maxObjects, int numBoxElement, cudaStream_t stream);
-/*
-    convert [8400 56] to [58001, ], 58001 = 1 + 1000 * (4bbox + cond + cls + keepflag + 51kpts), 1: number of valid bboxes
-     1000: max bboxes, valid bboxes may less than 1000, 4bbox: left, top, right, bottom)
-*/
 
 void nms(float* data, float kNmsThresh, int maxObjects, int numBoxElement, cudaStream_t stream);
-
 
 __inline__ void scale_bbox(cv::Mat& img, float bbox[4]){
     float r_w = kInputW / (img.cols * 1.0);
@@ -36,8 +26,9 @@ __inline__ void scale_bbox(cv::Mat& img, float bbox[4]){
     bbox[3] = (bbox[3] - pad_h) / r;
 }
 
-
 __inline__ std::vector<std::vector<float>> scale_kpt_coords(cv::Mat& img, float* pkpt){
+    // Keypoint được decode trong không gian letterbox 640x640, nên phải đảo padding/scale
+    // giống bbox trước khi vẽ hoặc tiêu thụ tiếp.
     float r_w = kInputW / (img.cols * 1.0);
     float r_h = kInputH / (img.rows * 1.0);
     float r = std::min(r_w, r_h);
@@ -62,6 +53,5 @@ __inline__ std::vector<std::vector<float>> scale_kpt_coords(cv::Mat& img, float*
 
     return vScaledKpts;
 }
-
 
 #endif  // POSTPROCESS_H

@@ -1,3 +1,4 @@
+#include <array>
 #include <numeric>
 #include <algorithm>
 #include <string>
@@ -8,9 +9,10 @@
 #include "utils.h"
 #include "infer.h"
 
+// Binary segment đo riêng model-only và full pipeline.
+// Với full pipeline, phần mask reconstruction thường chiếm đáng kể thời gian hơn detect thuần.
 
 #ifdef ENABLE_ONNXRUNTIME
-// CPU letterbox + normalize → CHW float32
 static void preprocess_cpu(const cv::Mat& img, float* data, int th, int tw) {
     float r = std::min((float)tw / img.cols, (float)th / img.rows);
     int nw = (int)(img.cols * r);
@@ -120,7 +122,6 @@ static int run_ort(char* imageDir, const std::string& onnxPath, std::vector<doub
     std::array<int64_t, 4> input_shape{1, 3, kInputH, kInputW};
     Ort::MemoryInfo mem = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
-    // warm-up
     {
         cv::Mat dummy(kInputH, kInputW, CV_8UC3, cv::Scalar(114, 114, 114));
         preprocess_cpu(dummy, input_buf.data(), kInputH, kInputW);
@@ -155,7 +156,6 @@ static int run_ort(char* imageDir, const std::string& onnxPath, std::vector<doub
 #endif
 }
 
-
 int main(int argc, char* argv[]) {
     if (argc < 3 || argc > 4) {
         printf("Usage: ./segment [image dir] [onnx file|model name] [plan file optional]\n");
@@ -184,7 +184,6 @@ int main(int argc, char* argv[]) {
     run_ort(argv[1], onnxPath, ort_times);
 #endif
 
-    // summary (skip first frame as warm-up)
     auto avg = [](const std::vector<double>& v, int skip) {
         if ((int)v.size() <= skip) return 0.0;
         double s = std::accumulate(v.begin() + skip, v.end(), 0.0);

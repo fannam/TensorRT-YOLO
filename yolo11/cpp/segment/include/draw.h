@@ -4,6 +4,7 @@
 #include <opencv2/opencv.hpp>
 #include <cuda_runtime.h>
 
+// Tô đè mask nhị phân đã resize lên ảnh BGR đầu vào.
 void draw_mask(cv::Mat& img, float* mask);
 
 #endif  // DRAW_H

@@ -1,13 +1,16 @@
 #include "postprocess.h"
 
+// File này cài đặt phần hậu xử lý trên GPU cho detect:
+// transpose layout, decode class/bbox và non-maximum suppression.
+
 // ------------------ transpose --------------------
 __global__ void transpose_kernel(float* src, float* dst, int numBboxes, int numElements, int edge){
     int position = blockDim.x * blockIdx.x + threadIdx.x;
     if (position >= edge) return;
 
+    // src đang là [numElements, numBboxes]; dst chuyển thành [numBboxes, numElements].
     dst[position] = src[(position % numElements) * numBboxes + position / numElements];
 }
-
 
 void transpose(float* src, float* dst, int numBboxes, int numElements, cudaStream_t stream){
     int edge = numBboxes * numElements;
@@ -16,12 +19,12 @@ void transpose(float* src, float* dst, int numBboxes, int numElements, cudaStrea
     transpose_kernel<<<gridSize, blockSize, 0, stream>>>(src, dst, numBboxes, numElements, edge);
 }
 
-
 // ------------------ decode ( get class and conf ) --------------------
 __global__ void decode_kernel(float* src, float* dst, int numBboxes, int numClasses, float confThresh, int maxObjects, int numBoxElement){
     int position = blockDim.x * blockIdx.x + threadIdx.x;
     if (position >= numBboxes) return;
 
+    // Sau transpose, mỗi candidate là [cx, cy, w, h, cls0, cls1, ...].
     float* pitem = src + (4 + numClasses) * position;
     float* classConf = pitem + 4;
     float confidence = 0;
@@ -35,6 +38,7 @@ __global__ void decode_kernel(float* src, float* dst, int numBboxes, int numClas
 
     if (confidence < confThresh) return;
 
+    // dst[0] giữ số box hợp lệ. atomicAdd cho phép nhiều thread cùng append box.
     int index = (int)atomicAdd(dst, 1);
     if (index >= maxObjects) return;
 
@@ -55,21 +59,21 @@ __global__ void decode_kernel(float* src, float* dst, int numBboxes, int numClas
     pout_item[3] = bottom;
     pout_item[4] = confidence;
     pout_item[5] = label;
-    pout_item[6] = 1;  // 1 = keep, 0 = ignore
+    // keep_flag sẽ bị NMS sửa thành 0 nếu box bị áp chế.
+    pout_item[6] = 1;
 }
 
-
 void decode(float* src, float* dst, int numBboxes, int numClasses, float confThresh, int maxObjects, int numBoxElement, cudaStream_t stream){
+    // Chỉ cần reset phần tử đếm đầu tiên; các vùng box phía sau sẽ bị ghi đè khi box hợp lệ xuất hiện.
     cudaMemsetAsync(dst, 0, sizeof(int), stream);
     int blockSize = 256;
     int gridSize = (numBboxes + blockSize - 1) / blockSize;
     decode_kernel<<<gridSize, blockSize, 0, stream>>>(src, dst, numBboxes, numClasses, confThresh, maxObjects, numBoxElement);
 }
 
-
 // ------------------ nms --------------------
 __device__ float box_iou(
-    float aleft, float atop, float aright, float abottom, 
+    float aleft, float atop, float aright, float abottom,
     float bleft, float btop, float bright, float bbottom
 ){
     float cleft = max(aleft, bleft);
@@ -85,19 +89,19 @@ __device__ float box_iou(
     return c_area / (a_area + b_area - c_area);
 }
 
-
 __global__ void nms_kernel(float* data, float kNmsThresh, int maxObjects, int numBoxElement){
     int position = blockDim.x * blockIdx.x + threadIdx.x;
     int count = min((int)data[0], maxObjects);
     if (position >= count) return;
 
-    // left, top, right, bottom, confidence, class, keepflag
+    // Layout mỗi box: [x1, y1, x2, y2, conf, class_id, keep_flag].
     float* pcurrent = data + 1 + position * numBoxElement;
     float* pitem;
     for (int i = 0; i < count; i++){
         pitem = data + 1 + i * numBoxElement;
         if (i == position || pcurrent[5] != pitem[5]) continue;
 
+        // Quy tắc tie-break: box score cao hơn giữ lại; nếu bằng điểm thì ưu tiên box đứng trước.
         if (pitem[4] >= pcurrent[4]){
             if (pitem[4] == pcurrent[4] && i < position) continue;
 
@@ -107,15 +111,15 @@ __global__ void nms_kernel(float* data, float kNmsThresh, int maxObjects, int nu
             );
 
             if (iou > kNmsThresh){
-                pcurrent[6] = 0;  // 1 = keep, 0 = ignore
+                pcurrent[6] = 0;
                 return;
             }
         }
     }
 }
 
-
 void nms(float* data, float kNmsThresh, int maxObjects, int numBoxElement, cudaStream_t stream){
+    // maxObjects thay vì count thực tế giúp grid shape cố định; kernel tự dừng khi position >= count.
     int blockSize = maxObjects < 256?maxObjects:256;
     int gridSize = (maxObjects + blockSize - 1) / blockSize;
     nms_kernel<<<gridSize, blockSize, 0, stream>>>(data, kNmsThresh, maxObjects, numBoxElement);

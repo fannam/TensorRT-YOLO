@@ -6,11 +6,19 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 task_dir="$repo_root/yolo26/cpp/pose"
 build_dir="$task_dir/build"
 
+image_dir="${1:-../images}"
+model="${2:-yolo26m-pose}"
+plan_file="${3:-}"
+
 mkdir -p "$build_dir"
 cd "$build_dir"
 
 cmake ..
-cmake --build .
+make -j"$(nproc)"
 
-echo "yolo26/cpp/pose is still a scaffold in this repo; no runnable executable is defined yet." >&2
-exit 1
+cmd=( "./pose" "$image_dir" "$model" )
+if [[ -n "$plan_file" ]]; then
+  cmd+=( "$plan_file" )
+fi
+
+"${cmd[@]}"

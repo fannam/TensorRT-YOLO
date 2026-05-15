@@ -1,6 +1,7 @@
 #include "draw.h"
 #include "utils.h"
 
+// File này chỉ lo phần hiển thị mask. Logic segmentation thật nằm ở process_mask trong infer.cpp.
 
 __global__ void draw_mask_kernel(uchar* imgData, float* mask, int h, int w, int color_b, int color_g, int color_r){
     int ix = threadIdx.x + blockIdx.x * blockDim.x;
@@ -10,13 +11,13 @@ __global__ void draw_mask_kernel(uchar* imgData, float* mask, int h, int w, int 
 
     if (ix >= w || iy >= h) return;
 
+    // Ngưỡng 0.5 biến mask sigmoid thành mặt nạ nhị phân đơn giản để trực quan hóa.
     if (mask[idx] > 0.5){
         imgData[idx3] = static_cast<uchar>(imgData[idx3] * 0.5 + color_b * 0.5);
         imgData[idx3 + 1] = static_cast<uchar>(imgData[idx3 + 1] * 0.5 + color_g * 0.5);
         imgData[idx3 + 2] = static_cast<uchar>(imgData[idx3 + 2] * 0.5 + color_r * 0.5);
     }
 }
-
 
 void draw_mask(cv::Mat& img, float* mask){
     int h = img.rows;

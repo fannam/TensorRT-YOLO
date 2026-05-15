@@ -8,11 +8,13 @@
 
 using namespace nvinfer1;
 
-
-
+// YoloDetector gom toàn bộ tài nguyên sống xuyên suốt nhiều lần inference:
+// engine/runtime/context của TensorRT, stream CUDA, buffer device/host và metadata binding.
 class YoloDetector
 {
 public:
+    // trtFile: đường dẫn .plan đã serialize hoặc nơi sẽ được ghi sau khi build.
+    // onnxFile: nguồn chân lý để build engine khi chưa có .plan.
     YoloDetector(
         const std::string trtFile,
         const std::string onnxFile,
@@ -22,11 +24,15 @@ public:
         int numClass=kNumClass
     );
     ~YoloDetector();
+
+    // Trả về detection đã scale theo ảnh gốc.
     std::vector<Detection> inference(cv::Mat& img);
+    // Chỉ đo thời gian enqueue TensorRT bằng CUDA event.
     double inference_model_only(cv::Mat& img);
     static void draw_image(cv::Mat& img, std::vector<Detection>& inferResult);
 
 private:
+    // Tải engine từ .plan nếu có, ngược lại build từ ONNX rồi serialize ra đĩa.
     void get_engine();
 
 private:
@@ -49,8 +55,10 @@ private:
     float *             transposeDevice;
     float *             decodeDevice;
 
-    int                 OUTPUT_CANDIDATES;  // 8400: 80 * 80 + 40 * 40 + 20 * 20
+    // Số candidate head sinh ra, thường là 8400 cho input 640.
+    int                 OUTPUT_CANDIDATES;
 
+    // Repo giữ cả index lẫn tên tensor vì TRT8 dùng binding index còn TRT10 ưu tiên tensor name.
     int                 inputIndex_;
     int                 outputIndex_;
     std::string         inputName_;

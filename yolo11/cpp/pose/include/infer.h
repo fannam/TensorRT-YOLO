@@ -8,7 +8,7 @@
 
 using namespace nvinfer1;
 
-
+// Detector cho pose giữ nguyên khung TensorRT của detect, nhưng decode ra bbox + class + keypoint.
 class YoloDetector
 {
 public:
@@ -37,7 +37,8 @@ private:
     float *             transposeDevice;
     float *             decodeDevice;
 
-    int                 OUTPUT_CANDIDATES;  // 8400: 80 * 80 + 40 * 40 + 20 * 20
+    // Với pose, head thường có shape [1, 56, 8400] = 4 bbox + 1 class + 51 keypoint values.
+    int                 OUTPUT_CANDIDATES;
 
     int                 inputIndex_;
     int                 outputIndex_;

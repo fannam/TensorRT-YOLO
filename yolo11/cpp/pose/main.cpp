@@ -5,6 +5,8 @@
 #include "utils.h"
 #include "infer.h"
 
+// Binary pose giữ nguyên khung benchmark của detect, nhưng pipeline đầy đủ còn bao gồm
+// giải mã keypoint và render skeleton.
 
 static std::string basename_without_ext(const std::string& path) {
     size_t slash = path.find_last_of("/\\");
@@ -37,6 +39,7 @@ static int run_trt_benchmark(
 
     YoloDetector detector(trtPath, onnxPath);
 
+    // Warm-up tách model-only và full pipeline giống detect để số đo ổn định hơn.
     cv::Mat dummy(kInputH, kInputW, CV_8UC3, cv::Scalar(114, 114, 114));
     detector.inference_model_only(dummy);
     detector.inference(dummy);
@@ -65,7 +68,6 @@ static int run_trt_benchmark(
 
     return 0;
 }
-
 
 int main(int argc, char *argv[])
 {

@@ -7,12 +7,14 @@
 
 using namespace nvinfer1;
 
+// File này chỉ phục vụ build INT8 engine. Runtime FP32/FP16 thông thường không chạm tới.
 
 std::vector<float> preprocess(cv::Mat& img, int input_w, int input_h)
 {
     int elements = 3 * input_h * input_w;
 
-    // letterbox and resize
+    // Bản preprocess CPU này phải khớp với pipeline inference để phân bố activation
+    // trong lúc calibration phản ánh đúng dữ liệu runtime.
     int w, h, x, y;
     float r_w = input_w / (img.cols * 1.0);
     float r_h = input_h / (img.rows * 1.0);
@@ -33,9 +35,9 @@ std::vector<float> preprocess(cv::Mat& img, int input_w, int input_h)
     cv::Mat out(input_h, input_w, CV_8UC3, cv::Scalar(128, 128, 128));
     re.copyTo(out(cv::Rect(x, y, re.cols, re.rows)));
 
-    // HWC to CHW , BGR to RGB, Normalize
+    // TensorRT calibrator nhận batch float32 NCHW.
     std::vector<float> result(elements);
-    float* norm_data = result.data();  // normalized data
+    float* norm_data = result.data();
     uchar* uc_pixel = out.data;
     for (int i = 0; i < input_h * input_w; i++)
     {
@@ -48,7 +50,6 @@ std::vector<float> preprocess(cv::Mat& img, int input_w, int input_h)
     return result;
 }
 
-
 Int8EntropyCalibrator2::Int8EntropyCalibrator2(int batch_size, int input_w, int input_h, const char* img_dir, const char* calib_table_name, bool read_cache)
     : batch_size_(batch_size)
     , input_w_(input_w)
@@ -59,7 +60,7 @@ Int8EntropyCalibrator2::Int8EntropyCalibrator2(int batch_size, int input_w, int 
     , read_cache_(read_cache)
 {
     input_count_ = 3 * input_w * input_h * batch_size;
-    // allocate memory for a batch of data, batchData is for CPU, deviceInput is for GPU
+    // batch_data giữ cả batch trên host, device_input_ là binding input cho TensorRT calibrator.
     batch_data = new float[input_count_];
     cudaMalloc(&device_input_, input_count_ * sizeof(float));
     read_files_in_dir(img_dir, img_files_);
@@ -97,6 +98,7 @@ bool Int8EntropyCalibrator2::getBatch(void* bindings[], const char* names[], int
     }
     img_idx_ += batch_size_;
 
+    // TensorRT sẽ đọc trực tiếp binding này để ước lượng scale INT8.
     cudaMemcpy(device_input_, batch_data, input_count_ * sizeof(float), cudaMemcpyHostToDevice);
     bindings[0] = device_input_;
     return true;
@@ -104,6 +106,7 @@ bool Int8EntropyCalibrator2::getBatch(void* bindings[], const char* names[], int
 
 const void* Int8EntropyCalibrator2::readCalibrationCache(size_t& length) noexcept
 {
+    // Nếu cache tồn tại và read_cache_=true thì TensorRT bỏ qua lượt calibration ảnh.
     std::cout << "reading calib cache: " << calib_table_name_ << std::endl;
     calib_cache_.clear();
     std::ifstream input(calib_table_name_, std::ios::binary);
@@ -118,6 +121,7 @@ const void* Int8EntropyCalibrator2::readCalibrationCache(size_t& length) noexcep
 
 void Int8EntropyCalibrator2::writeCalibrationCache(const void* cache, size_t length) noexcept
 {
+    // Cache được ghi sau khi TensorRT hoàn tất calibration để lần build sau tái sử dụng.
     std::cout << "writing calib cache: " << calib_table_name_ << " size: " << length << std::endl;
     std::ofstream output(calib_table_name_, std::ios::binary);
     output.write(reinterpret_cast<const char*>(cache), length);

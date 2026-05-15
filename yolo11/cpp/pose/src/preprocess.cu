@@ -1,5 +1,8 @@
 ﻿#include "preprocess.h"
 
+// Pose dùng cùng chiến lược preprocess với detect:
+// letterbox + bilinear resize + BGR->RGB + HWC->CHW + normalize.
+
 
 __global__ void letterbox(const uchar* srcData, const int srcH, const int srcW, uchar* tgtData, 
     const int tgtH, const int tgtW, const int rszH, const int rszW, const int startY, const int startX)
@@ -10,7 +13,8 @@ __global__ void letterbox(const uchar* srcData, const int srcH, const int srcW, 
     int idx3 = idx * 3;
 
     if ( ix > tgtW || iy > tgtH ) return;  // thread out of target range
-    // gray region on target image
+    // Padding của pose sample đang dùng 128 thay vì 114 như detect/segment.
+    // Đây là giả định cứng của ví dụ hiện tại, nên scale ngược vẫn phải theo cùng letterbox.
     if ( iy < startY || iy > (startY + rszH - 1) ) {
         tgtData[idx3] = 128;
         tgtData[idx3 + 1] = 128;
@@ -27,17 +31,13 @@ __global__ void letterbox(const uchar* srcData, const int srcH, const int srcW, 
     float scaleY = (float)rszH / (float)srcH;
     float scaleX = (float)rszW / (float)srcW;
 
-    // (ix,iy)为目标图像坐标
-    // (before_x,before_y)原图坐标
+    // Từ pixel đích truy ngược về toạ độ ảnh nguồn để nội suy bilinear.
     float beforeX = float(ix - startX + 0.5) / scaleX - 0.5;
     float beforeY = float(iy - startY + 0.5) / scaleY - 0.5;
-    // 原图像坐标四个相邻点
-    // 获得变换前最近的四个顶点,取整
     int topY = static_cast<int>(beforeY);
     int bottomY = topY + 1;
     int leftX = static_cast<int>(beforeX);
     int rightX = leftX + 1;
-    //计算变换前坐标的小数部分
     float u = beforeX - leftX;
     float v = beforeY - topY;
 
@@ -101,7 +101,7 @@ void preprocess(const cv::Mat& srcImg, float* dstDevData, const int dstHeight, c
     int srcElements = srcHeight * srcWidth * 3;
     int dstElements = dstHeight * dstWidth * 3;
 
-    // middle image data on device ( for bilinear resize )
+    // Tạo hai vùng nhớ tạm để resize trên GPU rồi ghi tensor float đầu vào.
     uchar* midDevData;
     cudaMalloc((void**)&midDevData, sizeof(uchar) * dstElements);
     // source images data on device
@@ -109,7 +109,7 @@ void preprocess(const cv::Mat& srcImg, float* dstDevData, const int dstHeight, c
     cudaMalloc((void**)&srcDevData, sizeof(uchar) * srcElements);
     cudaMemcpyAsync(srcDevData, srcImg.data, sizeof(uchar) * srcElements, cudaMemcpyHostToDevice, stream);
 
-    // calculate width and height after resize
+    // Giữ aspect ratio và chèn padding ở cạnh còn lại giống detect.
     int w, h, x, y;
     float r_w = dstWidth / (srcWidth * 1.0);
     float r_h = dstHeight / (srcHeight * 1.0);
@@ -129,10 +129,10 @@ void preprocess(const cv::Mat& srcImg, float* dstDevData, const int dstHeight, c
     dim3 blockSize(32, 32);
     dim3 gridSize((dstWidth + blockSize.x - 1) / blockSize.x, (dstHeight + blockSize.y - 1) / blockSize.y);
 
-    // letterbox and resize
+    // Kernel 1: resize + padding
     letterbox<<<gridSize, blockSize, 0, stream>>>(srcDevData, srcHeight, srcWidth, midDevData, dstHeight, dstWidth, h, w, y, x);
     cudaDeviceSynchronize();
-    // hwc to chw / bgr to rgb / normalize
+    // Kernel 2: HWC BGR uchar -> CHW RGB float32
     process<<<gridSize, blockSize, 0, stream>>>(midDevData, dstDevData, dstHeight, dstWidth);
 
     cudaFree(srcDevData);

@@ -4,27 +4,26 @@
 #include "infer.h"
 #include "BYTETracker.h"
 
+// Binary track ghép detector YOLO11 detect với shared ByteTrack:
+// video frame -> detect -> lọc class -> BYTETracker.update() -> draw track id -> ghi video output.
 
-// 需要跟踪的类别，可以根据自己需求调整，筛选自己想要跟踪的对象的种类（以下对应COCO数据集类别索引）
+// Chỉ track một tập con class COCO để demo dễ nhìn và giảm nhiễu ID switch cho object ít quan tâm.
 std::vector<int>  trackClasses {0, 1, 2, 3, 5, 7};  // person, bicycle, car, motorcycle, bus, truck
 
-
 bool isTrackingClass(int class_id){
-	for (auto& c : trackClasses){
-		if (class_id == c) return true;
-	}
-	return false;
+    for (auto& c : trackClasses){
+        if (class_id == c) return true;
+    }
+    return false;
 }
 
-
 int run(const std::filesystem::path& executablePath, char* videoPath){
-    // read video
     std::string inputVideoPath = std::string(videoPath);
     cv::VideoCapture cap(inputVideoPath);
     if ( !cap.isOpened() ) return 0;
 
     int img_w = cap.get(CAP_PROP_FRAME_WIDTH);
-	int img_h = cap.get(CAP_PROP_FRAME_HEIGHT);
+    int img_h = cap.get(CAP_PROP_FRAME_HEIGHT);
     int fps = cap.get(CAP_PROP_FPS);
     long nFrame = static_cast<long>(cap.get(CAP_PROP_FRAME_COUNT));
     cout << "Total frames: " << nFrame << endl;
@@ -35,12 +34,13 @@ int run(const std::filesystem::path& executablePath, char* videoPath){
 
     cv::VideoWriter writer(outputPath.string(), VideoWriter::fourcc('m', 'p', '4', 'v'), fps, Size(img_w, img_h));
 
-    // YOLOv8 predictor
+    // Tracker sample dùng detector detect thường, không dùng head tracking chuyên biệt.
+    // Detector để confThresh thấp hơn detect demo vì ByteTrack muốn tiêu thụ cả box score thấp.
     std::string trtFile = (exeDir / "../../detect/build/yolo11s.plan").lexically_normal().string();
     std::string onnxFile = (exeDir / "../../detect/onnx_model/yolo11s.onnx").lexically_normal().string();
     YoloDetector detector(trtFile, onnxFile, 0, 0.45, 0.01);
 
-    // ByteTrack tracker
+    // ByteTrack dùng fps và track_buffer để quyết định một track được phép "mất tích" bao lâu.
     BYTETracker tracker(fps, 30);
 
     cv::Mat img;
@@ -56,10 +56,10 @@ int run(const std::filesystem::path& executablePath, char* videoPath){
 
         auto start = std::chrono::system_clock::now();
 
-        // yolo inference
         std::vector<Detection> res = detector.inference(img);
 
-        // yolo output format to bytetrack input format, and filter bbox by class id
+        // Chuyển output detector sang Object mà ByteTrack hiểu:
+        // rect tlwh + label + score. Đồng thời lọc class không muốn track.
         std::vector<Object> objects;
         for (size_t j = 0; j < res.size(); j++){
             float* bbox = res[j].bbox;
@@ -73,32 +73,26 @@ int run(const std::filesystem::path& executablePath, char* videoPath){
             }
         }
 
-        // track
+        // update() thực hiện toàn bộ state machine Tracked/Lost/Removed và trả về track đang hoạt động.
         std::vector<STrack> output_stracks = tracker.update(objects);
 
         auto end = std::chrono::system_clock::now();
         total_ms = total_ms + std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
 
         for (int i = 0; i < output_stracks.size(); i++)
-		{
-			std::vector<float> tlwh = output_stracks[i].tlwh;
-			// bool vertical = tlwh[2] / tlwh[3] > 1.6;
-			// if (tlwh[2] * tlwh[3] > 20 && !vertical)
+        {
+            std::vector<float> tlwh = output_stracks[i].tlwh;
             if (tlwh[2] * tlwh[3] > 20)
-			{
-				cv::Scalar s = tracker.get_color(output_stracks[i].track_id);
-				cv::putText(img, cv::format("%d", output_stracks[i].track_id), cv::Point(tlwh[0], tlwh[1] - 5), 
+            {
+                cv::Scalar s = tracker.get_color(output_stracks[i].track_id);
+                cv::putText(img, cv::format("%d", output_stracks[i].track_id), cv::Point(tlwh[0], tlwh[1] - 5),
                         0, 0.6, cv::Scalar(0, 0, 255), 2, cv::LINE_AA);
                 cv::rectangle(img, cv::Rect(tlwh[0], tlwh[1], tlwh[2], tlwh[3]), s, 2);
-			}
-		}
-        cv::putText(img, cv::format("frame: %d fps: %d num: %ld", num_frames, num_frames * 1000000 / total_ms, output_stracks.size()), 
+            }
+        }
+        cv::putText(img, cv::format("frame: %d fps: %d num: %ld", num_frames, num_frames * 1000000 / total_ms, output_stracks.size()),
                 cv::Point(0, 30), 0, 0.6, cv::Scalar(0, 0, 255), 2, cv::LINE_AA);
         writer.write(img);
-
-        // cv::imshow("img", img);
-        // char c = waitKey(1);
-        // if (c > 0) break;
     }
 
     cap.release();
@@ -106,7 +100,6 @@ int run(const std::filesystem::path& executablePath, char* videoPath){
 
     return 0;
 }
-
 
 int main(int argc, char* argv[]){
     if (argc != 2 )

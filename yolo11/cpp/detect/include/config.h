@@ -4,26 +4,30 @@
 #include <string>
 #include <vector>
 
-
+// Cấu hình compile-time cho binary detect.
+// Các hằng số này đồng thời chi phối shape TensorRT, preprocess CUDA và bước scale
+// output về ảnh gốc, nên phải được hiểu như "hợp đồng chung" của cả pipeline.
 const int kGpuId = 0;
 const int kNumClass = 80;
 const int kInputH = 640;
 const int kInputW = 640;
 const float kNmsThresh = 0.45f;
 const float kConfThresh = 0.25f;
-const int kMaxNumOutputBbox = 1000;  // assume the box outputs no more than kMaxNumOutputBbox boxes that conf >= kNmsThresh;
-const int kNumBoxElement = 7;  // left, top, right, bottom, confidence, class, keepflag(whether drop when NMS)
 
-// const std::string trtFile = "./yolo11s.plan";
-// const std::string testDataDir = "../images";  // 用于推理
+// Buffer decode trên GPU/CPU được cấp phát cố định cho tối đa 1000 box hợp lệ.
+// Nếu cần nhiều hơn, phải sửa đồng bộ layout decode/NMS và host buffer.
+const int kMaxNumOutputBbox = 1000;
+// Mỗi box sau decode chiếm 7 float: [x1, y1, x2, y2, conf, class_id, keep_flag].
+const int kNumBoxElement = 7;
 
-// for FP16 mode
+// Builder flag cho TensorRT. Repo giữ ở dạng hằng số để sample dễ đọc hơn CLI động.
 const bool bFP16Mode = false;
-// for INT8 mode
 const bool bINT8Mode = false;
 const std::string cacheFile = "./int8.cache";
-const std::string calibrationDataPath = "../calibrator";  // 存放用于 int8 量化校准的图像
+// Thư mục ảnh calibration chỉ được dùng khi bINT8Mode=true.
+const std::string calibrationDataPath = "../calibrator";
 
+// Bản đồ class COCO để bước vẽ và log có thể chuyển class_id sang tên có nghĩa.
 const std::vector<std::string> vClassNames {
     "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light", "fire hydrant",
     "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe",

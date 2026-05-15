@@ -10,3 +10,6 @@
 
 - Tracking dùng detector từ cùng model family, không còn phụ thuộc path ở root layout cũ
 - ByteTrack đã được tách sang `shared/cpp/bytetrack` và `shared/python/tracker`
+- Tài liệu giải thích C++ cho `YOLO11 + shared`:
+  - `YOLO11_CPP_OVERVIEW.md`: bản đồ module, luồng dữ liệu, tensor shape, memory map
+  - `YOLO11_CPP_BYTETRACK.md`: state machine ByteTrack, Kalman, IoU, assignment flow

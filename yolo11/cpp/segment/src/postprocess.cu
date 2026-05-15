@@ -1,5 +1,9 @@
 #include "postprocess.h"
 
+// Postprocess segment gồm hai nửa:
+// 1) detect-style: transpose, decode, NMS
+// 2) mask-style: nhân coefficient với proto, crop, cắt padding letterbox và resize mask.
+
 // ------------------ transpose --------------------
 __global__ void transpose_kernel(float* src, float* dst, int numBboxes, int numElements, int edge){
     int position = blockDim.x * blockIdx.x + threadIdx.x;
@@ -22,6 +26,7 @@ __global__ void decode_kernel(float* src, float* dst, int numBboxes, int numClas
     int position = blockDim.x * blockIdx.x + threadIdx.x;
     if (position >= numBboxes) return;
 
+    // Candidate layout sau transpose: [cx, cy, w, h, cls..., mask_coeff_32].
     float* pitem = src + (4 + numClasses + numMasks) * position;
     float* classConf = pitem + 4;
     float confidence = 0;
@@ -56,6 +61,7 @@ __global__ void decode_kernel(float* src, float* dst, int numBboxes, int numClas
     pout_item[4] = confidence;
     pout_item[5] = label;
     pout_item[6] = 1;  // 1 = keep, 0 = ignore
+    // Giữ nguyên 32 coefficient để bước process_mask ghép với proto sau NMS.
     for (int j = 0; j < numMasks; j++){
         pout_item[7 + j] = pitem[4 + numClasses + j];
     }
@@ -135,6 +141,7 @@ __global__ void matrix_multiply_kernel(float* aMatrix, int aCols, float* bMatrix
     int position = blockDim.x * blockIdx.x + threadIdx.x;
     if (position >= cSize) return;
 
+    // C[i, j] = dot(A[i, :], B[:, j]).
     float target = 0;
     for (int j = 0; j < aCols; j++){
         target += aMatrix[position / bCols * aCols + j] * bMatrix[j * bCols + position % bCols];
@@ -192,8 +199,7 @@ __global__ void crop_mask_kernel(float* masks, int maskNum, int maskHeight, int 
 }
 
 void crop_mask(float* masksDevice, int maskNum, int maskHeight, int maskWidth, float* bboxesDevice, cudaStream_t stream){
-    // alloc 2D thread shape (h, w), h >= maskHeight, w >= maskNum * maskWidth
-    // that is to say: view 2D mask as horizontal mode
+    // Ghép nhiều mask cạnh nhau theo chiều ngang để một grid 2D có thể duyệt toàn bộ.
     int maskWidthTotal = maskNum * maskWidth;
     dim3 blockSize(32, 32);
     dim3 gridSize((maskWidthTotal + blockSize.x - 1) / blockSize.x, (maskHeight + blockSize.y - 1) / blockSize.y);
@@ -258,25 +264,21 @@ __global__ void resize_kernel(float* masks, int maskNum, int maskHeight, int mas
     float scaleY = (float)dstMaskH / (float)maskHeight;
     float scaleX = (float)dstMaskW / (float)maskWidth;
 
-    // (ix, iy)为目标图像坐标
-    // (before_x, before_y)为原图坐标
+    // Nội suy bilinear mask sau khi đã cắt bỏ padding letterbox.
     float beforeX = float(ix + 0.5) / scaleX - 0.5;
     float beforeY = float(iy + 0.5) / scaleY - 0.5;
-    // 原图像坐标四个相邻点
-    // 获得变换前最近的四个顶点,取整
     int topY = static_cast<int>(beforeY);
     int bottomY = topY + 1;
     int leftX = static_cast<int>(beforeX);
     int rightX = leftX + 1;
-    //计算变换前坐标的小数部分
     float u = beforeX - leftX;
     float v = beforeY - topY;
 
-    if (topY >= maskHeight - 1){  // 对应原图的坐标位于最后一行
+    if (topY >= maskHeight - 1){
         topY = maskHeight - 1;
         bottomY = maskHeight - 1;
     }
-    if (leftX >= maskWidth - 1){  // 对应原图的坐标位于最后一列
+    if (leftX >= maskWidth - 1){
         leftX = maskWidth - 1;
         rightX = maskWidth - 1;
     }

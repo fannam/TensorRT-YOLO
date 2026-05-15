@@ -1,5 +1,8 @@
 #include "postprocess.h"
 
+// Postprocess pose khác detect ở chỗ mỗi candidate còn mang thêm vector keypoint,
+// nhưng NMS vẫn chỉ dựa trên bbox/class/conf.
+
 // ------------------ transpose --------------------
 __global__ void transpose_kernel(float* src, float* dst, int numBboxes, int numElements, int edge){
     int position = blockDim.x * blockIdx.x + threadIdx.x;
@@ -8,14 +11,12 @@ __global__ void transpose_kernel(float* src, float* dst, int numBboxes, int numE
     dst[position] = src[(position % numElements) * numBboxes + position / numElements];
 }
 
-
 void transpose(float* src, float* dst, int numBboxes, int numElements, cudaStream_t stream){
     int edge = numBboxes * numElements;
     int blockSize = 256;
     int gridSize = (edge + blockSize - 1) / blockSize;
     transpose_kernel<<<gridSize, blockSize, 0, stream>>>(src, dst, numBboxes, numElements, edge);
 }
-
 
 // ------------------ decode ( get class and conf ) --------------------
 __global__ void decode_kernel(float* src, float* dst, int numBboxes, int numClasses, int numKpts, float confThresh, int maxObjects, int numBoxElement){
@@ -55,12 +56,12 @@ __global__ void decode_kernel(float* src, float* dst, int numBboxes, int numClas
     pout_item[3] = bottom;
     pout_item[4] = confidence;
     pout_item[5] = label;
-    pout_item[6] = 1;  // 1 = keep, 0 = ignore
+    pout_item[6] = 1;
+    // Copy nguyên khối 51 giá trị keypoint; bước scale/visibility xử lý ở host.
     for (int j = 0; j < numKpts; j++){
         pout_item[7 + j] = pitem[4 + numClasses + j];
     }
 }
-
 
 void decode(float* src, float* dst, int numBboxes, int numClasses, int numKpts, float confThresh, int maxObjects, int numBoxElement, cudaStream_t stream){
     cudaMemset(dst, 0, sizeof(int));
@@ -69,10 +70,9 @@ void decode(float* src, float* dst, int numBboxes, int numClasses, int numKpts, 
     decode_kernel<<<gridSize, blockSize, 0, stream>>>(src, dst, numBboxes, numClasses, numKpts, confThresh, maxObjects, numBoxElement);
 }
 
-
 // ------------------ nms --------------------
 __device__ float box_iou(
-    float aleft, float atop, float aright, float abottom, 
+    float aleft, float atop, float aright, float abottom,
     float bleft, float btop, float bright, float bbottom
 ){
     float cleft = max(aleft, bleft);
@@ -88,13 +88,11 @@ __device__ float box_iou(
     return c_area / (a_area + b_area - c_area);
 }
 
-
 __global__ void nms_kernel(float* data, float kNmsThresh, int maxObjects, int numBoxElement){
     int position = blockDim.x * blockIdx.x + threadIdx.x;
     int count = min((int)data[0], maxObjects);
     if (position >= count) return;
 
-    // left, top, right, bottom, confidence, class, keepflag
     float* pcurrent = data + 1 + position * numBoxElement;
     float* pitem;
     for (int i = 0; i < count; i++){
@@ -110,13 +108,12 @@ __global__ void nms_kernel(float* data, float kNmsThresh, int maxObjects, int nu
             );
 
             if (iou > kNmsThresh){
-                pcurrent[6] = 0;  // 1 = keep, 0 = ignore
+                pcurrent[6] = 0;
                 return;
             }
         }
     }
 }
-
 
 void nms(float* data, float kNmsThresh, int maxObjects, int numBoxElement, cudaStream_t stream){
     int blockSize = maxObjects < 256?maxObjects:256;

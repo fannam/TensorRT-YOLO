@@ -1,8 +1,10 @@
-﻿#include "preprocess.h"
+#include "preprocess.h"
 #include "public.h"
 
+// File này cài đặt preprocess hoàn toàn trên GPU để tránh round-trip host:
+// letterbox + bilinear resize + đổi màu + đổi layout + normalize.
 
-__global__ void letterbox(const uchar* srcData, const int srcH, const int srcW, uchar* tgtData, 
+__global__ void letterbox(const uchar* srcData, const int srcH, const int srcW, uchar* tgtData,
     const int tgtH, const int tgtW, const int rszH, const int rszW, const int startY, const int startX)
 {
     int ix = threadIdx.x + blockDim.x * blockIdx.x;
@@ -10,8 +12,8 @@ __global__ void letterbox(const uchar* srcData, const int srcH, const int srcW, 
     int idx = ix + iy * tgtW;
     int idx3 = idx * 3;
 
-    if ( ix >= tgtW || iy >= tgtH ) return;  // thread out of target range
-    // gray region on target image
+    if ( ix >= tgtW || iy >= tgtH ) return;
+    // Những pixel nằm ngoài vùng ảnh resize được điền hằng 114.
     if ( iy < startY || iy > (startY + rszH - 1) ) {
         tgtData[idx3] = 114;
         tgtData[idx3 + 1] = 114;
@@ -28,28 +30,25 @@ __global__ void letterbox(const uchar* srcData, const int srcH, const int srcW, 
     float scaleY = (float)rszH / (float)srcH;
     float scaleX = (float)rszW / (float)srcW;
 
-    // (ix,iy)为目标图像坐标
-    // (before_x,before_y)原图坐标
+    // Mỗi pixel đích truy ngược về toạ độ ảnh nguồn rồi nội suy bilinear.
+    // Công thức +0.5/-0.5 giữ tâm pixel thẳng hàng hơn khi scale.
     float beforeX = float(ix - startX + 0.5) / scaleX - 0.5;
     float beforeY = float(iy - startY + 0.5) / scaleY - 0.5;
-    // 原图像坐标四个相邻点
-    // 获得变换前最近的四个顶点,取整
     int topY = static_cast<int>(beforeY);
     int bottomY = topY + 1;
     int leftX = static_cast<int>(beforeX);
     int rightX = leftX + 1;
-    //计算变换前坐标的小数部分
     float u = beforeX - leftX;
     float v = beforeY - topY;
 
-    if (topY >= srcH - 1 && leftX >= srcW - 1)  //右下角
+    if (topY >= srcH - 1 && leftX >= srcW - 1)
     {
         for (int k = 0; k < 3; k++)
         {
             tgtData[idx3 + k] = (1. - u) * (1. - v) * srcData[(leftX + topY * srcW) * 3 + k];
         }
     }
-    else if (topY >= srcH - 1)  // 最后一行
+    else if (topY >= srcH - 1)
     {
         for (int k = 0; k < 3; k++)
         {
@@ -58,7 +57,7 @@ __global__ void letterbox(const uchar* srcData, const int srcH, const int srcW, 
             + (u) * (1. - v) * srcData[(rightX + topY * srcW) * 3 + k];
         }
     }
-    else if (leftX >= srcW - 1)  // 最后一列
+    else if (leftX >= srcW - 1)
     {
         for (int k = 0; k < 3; k++)
         {
@@ -67,7 +66,7 @@ __global__ void letterbox(const uchar* srcData, const int srcH, const int srcW, 
             + (1. - u) * (v) * srcData[(leftX + bottomY * srcW) * 3 + k];
         }
     }
-    else  // 非最后一行或最后一列情况
+    else
     {
         for (int k = 0; k < 3; k++)
         {
@@ -89,9 +88,10 @@ __global__ void process(const uchar* srcData, float* tgtData, const int h, const
 
     if (ix < w && iy < h)
     {
-        tgtData[idx] = (float)srcData[idx3 + 2] / 255.0;  // R pixel
-        tgtData[idx + h * w] = (float)srcData[idx3 + 1] / 255.0;  // G pixel
-        tgtData[idx + h * w * 2] = (float)srcData[idx3] / 255.0;  // B pixel
+        // TensorRT nhận NCHW float32 theo RGB, còn OpenCV vào dưới dạng HWC BGR uchar.
+        tgtData[idx] = (float)srcData[idx3 + 2] / 255.0;
+        tgtData[idx + h * w] = (float)srcData[idx3 + 1] / 255.0;
+        tgtData[idx + h * w * 2] = (float)srcData[idx3] / 255.0;
     }
 }
 
@@ -102,15 +102,14 @@ void preprocess(const cv::Mat& srcImg, float* dstDevData, const int dstHeight, c
     int srcElements = srcHeight * srcWidth * 3;
     int dstElements = dstHeight * dstWidth * 3;
 
-    // middle image data on device ( for bilinear resize )
+    // midDevData giữ ảnh letterbox trung gian dạng uchar để kernel process đọc liên tục.
     uchar* midDevData;
     CHECK(cudaMalloc((void**)&midDevData, sizeof(uchar) * dstElements));
-    // source images data on device
     uchar* srcDevData;
     CHECK(cudaMalloc((void**)&srcDevData, sizeof(uchar) * srcElements));
     CHECK(cudaMemcpyAsync(srcDevData, srcImg.data, sizeof(uchar) * srcElements, cudaMemcpyHostToDevice, stream));
 
-    // calculate width and height after resize
+    // Tính tỉ lệ letterbox sao cho giữ nguyên aspect ratio và chèn padding ở cạnh còn lại.
     int w, h, x, y;
     float r_w = dstWidth / (srcWidth * 1.0);
     float r_h = dstHeight / (srcHeight * 1.0);
@@ -126,13 +125,13 @@ void preprocess(const cv::Mat& srcImg, float* dstDevData, const int dstHeight, c
         x = (dstWidth - w) / 2;
         y = 0;
     }
-    
+
     dim3 blockSize(32, 32);
     dim3 gridSize((dstWidth + blockSize.x - 1) / blockSize.x, (dstHeight + blockSize.y - 1) / blockSize.y);
 
-    // letterbox and resize
+    // Kernel 1: resize + padding 114.
     letterbox<<<gridSize, blockSize, 0, stream>>>(srcDevData, srcHeight, srcWidth, midDevData, dstHeight, dstWidth, h, w, y, x);
-    // hwc to chw / bgr to rgb / normalize
+    // Kernel 2: HWC BGR uchar -> CHW RGB float32 đã normalize.
     process<<<gridSize, blockSize, 0, stream>>>(midDevData, dstDevData, dstHeight, dstWidth);
 
     CHECK(cudaFree(srcDevData));

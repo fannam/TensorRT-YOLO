@@ -8,7 +8,7 @@
 
 using namespace nvinfer1;
 
-
+// Segment quản lý ba binding chính: input, proto output và detect output.
 class YoloDetector
 {
 public:
@@ -20,8 +20,9 @@ public:
 
 private:
     void get_engine();
+    // Ghép mask coefficient với proto để tái tạo mask từng detection ngay trên GPU.
     static void process_mask(
-        float* protoDevice, Dims protoOutDims, std::vector<Detection>& vDetections, 
+        float* protoDevice, Dims protoOutDims, std::vector<Detection>& vDetections,
         int kInputH, int kInputW, cv::Mat& img, cudaStream_t stream
     );
 
@@ -41,8 +42,9 @@ private:
     float *             transposeDevide;
     float *             decodeDevice;
 
-    int                 OUTPUT_CANDIDATES;  // 8400: 80 * 80 + 40 * 40 + 20 * 20
-    Dims              protoOutDims;  // proto shape [1 32 160 160]
+    int                 OUTPUT_CANDIDATES;
+    // Proto thường có shape [1, 32, 160, 160] và là "dictionary" để tái tạo mask.
+    Dims                protoOutDims;
 
     int                 inputIndex_;
     int                 protoIndex_;

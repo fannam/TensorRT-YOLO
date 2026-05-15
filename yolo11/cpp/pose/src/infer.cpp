@@ -11,6 +11,8 @@
 
 using namespace nvinfer1;
 
+// Pose giữ cùng bộ khung TensorRT như detect; khác biệt chính nằm ở shape output,
+// buffer decode lớn hơn và bước scale keypoint về ảnh gốc.
 
 YoloDetector::YoloDetector(
         const std::string trtFile,
@@ -22,7 +24,6 @@ YoloDetector::YoloDetector(
 
     CHECK(cudaStreamCreate(&stream));
 
-    // load engine
     get_engine();
 
     context = engine->createExecutionContext();
@@ -41,8 +42,8 @@ YoloDetector::YoloDetector(
 
     context->setInputShape(inputName_.c_str(), Dims {4, {1, 3, kInputH, kInputW}});
 
-    // get engine output info
-    Dims outDims = context->getTensorShape(outputName_.c_str());  // [1, 56, 8400], 56 = bbox + class + keypoints
+    // 56 = 4 bbox + 1 class + 17 * 3 keypoint.
+    Dims outDims = context->getTensorShape(outputName_.c_str());
 #else
     inputIndex_ = 0;
     outputIndex_ = 1;
@@ -55,19 +56,15 @@ YoloDetector::YoloDetector(
     }
 
     context->setBindingDimensions(inputIndex_, Dims {4, {1, 3, kInputH, kInputW}});
-
-    // get engine output info
-    Dims outDims = context->getBindingDimensions(outputIndex_);  // [1, 56, 8400], 56 = bbox + class + keypoints
+    Dims outDims = context->getBindingDimensions(outputIndex_);
 #endif
-    OUTPUT_CANDIDATES = outDims.d[2];  // 8400
-    int outputSize = 1;  // 56 * 8400
+    OUTPUT_CANDIDATES = outDims.d[2];
+    int outputSize = 1;
     for (int i = 0; i < outDims.nbDims; i++){
         outputSize *= outDims.d[i];
     }
 
-    // prepare output data space on host
     outputData = new float[1 + kMaxNumOutputBbox * kNumBoxElement];
-    // prepare input and output space on device
     vBufferD.resize(2, nullptr);
     CHECK(cudaMalloc(&vBufferD[inputIndex_], 3 * kInputH * kInputW * sizeof(float)));
     CHECK(cudaMalloc(&vBufferD[outputIndex_], outputSize * sizeof(float)));
@@ -182,10 +179,8 @@ YoloDetector::~YoloDetector(){
 std::vector<Detection> YoloDetector::inference(cv::Mat& img){
     if (img.empty()) return {};
 
-    // put input on device, then letterbox、bgr to rgb、hwc to chw、normalize.
     preprocess(img, (float*)vBufferD[inputIndex_], kInputH, kInputW, stream);
 
-    // tensorrt inference
 #if NV_TENSORRT_MAJOR >= 10
     context->setTensorAddress(inputName_.c_str(), vBufferD[inputIndex_]);
     context->setTensorAddress(outputName_.c_str(), vBufferD[outputIndex_]);
@@ -194,12 +189,10 @@ std::vector<Detection> YoloDetector::inference(cv::Mat& img){
     context->enqueueV2(vBufferD.data(), stream, nullptr);
 #endif
 
-    // transpose [56 8400] convert to [8400 56]
+    // [56, 8400] -> [8400, 56] để một thread decode đọc đủ bbox + class + keypoint của 1 candidate.
     transpose((float*)vBufferD[outputIndex_], transposeDevice, OUTPUT_CANDIDATES, 4 + kNumClass + kNumKpt * kKptDims, stream);
-    // convert [8400 56] to [58001, ], 58001 = 1 + 1000 * (4bbox + cond + cls + keepflag + 51kpts)
-    int nk = kNumKpt * kKptDims;  // number of keypoints total, default 51
+    int nk = kNumKpt * kKptDims;
     decode(transposeDevice, decodeDevice, OUTPUT_CANDIDATES, kNumClass, nk, kConfThresh, kMaxNumOutputBbox, kNumBoxElement, stream);
-    // cuda nms
     nms(decodeDevice, kNmsThresh, kMaxNumOutputBbox, kNumBoxElement, stream);
 
     CHECK(cudaMemcpyAsync(outputData, decodeDevice, (1 + kMaxNumOutputBbox * kNumBoxElement) * sizeof(float), cudaMemcpyDeviceToHost, stream));
@@ -215,6 +208,7 @@ std::vector<Detection> YoloDetector::inference(cv::Mat& img){
             memcpy(det.bbox, &outputData[pos], 4 * sizeof(float));
             det.conf = outputData[pos + 4];
             det.classId = (int)outputData[pos + 5];
+            // 51 giá trị keypoint được giữ nguyên thứ tự [x, y, conf] * 17.
             memcpy(det.kpts, &outputData[pos + 7], kNumKpt * kKptDims * sizeof(float));
             vDetections.push_back(det);
         }
@@ -257,12 +251,9 @@ double YoloDetector::inference_model_only(cv::Mat& img){
     return milliseconds;
 }
 
-
 void YoloDetector::draw_image(cv::Mat& img, std::vector<Detection>& inferResult, bool drawBbox, bool kptLine){
-    // draw inference result on image
     for (size_t j = 0; j < inferResult.size(); j++)
     {
-        // draw bboxes
         if (drawBbox){
             cv::Scalar bboxColor(get_random_int(), get_random_int(), get_random_int());
             cv::Rect r(
@@ -283,7 +274,6 @@ void YoloDetector::draw_image(cv::Mat& img, std::vector<Detection>& inferResult,
             cv::putText(img, labelStr, cv::Point(r.x, r.y - 2), cv::FONT_HERSHEY_PLAIN, 1.2, cv::Scalar(255, 255, 255), 2, cv::LINE_AA);
         }
 
-        // draw key points
         int x, y;
         float conf;
         int radius = std::min(img.rows, img.cols) / 100;
@@ -299,7 +289,6 @@ void YoloDetector::draw_image(cv::Mat& img, std::vector<Detection>& inferResult,
             cv::circle(img, cv::Point(x, y), radius, kptColor, -1);
         }
 
-        // draw skeleton between key points
         if (kptLine){
             int kpt1_idx, kpt2_idx, kpt1_x, kpt1_y, kpt2_x, kpt2_y;
             float kpt1_conf, kpt2_conf;

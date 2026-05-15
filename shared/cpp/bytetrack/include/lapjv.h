@@ -1,6 +1,8 @@
 #ifndef LAPJV_H
 #define LAPJV_H
 
+// lapjv.cpp nhúng một solver Linear Assignment Problem kiểu Jonker-Volgenant.
+// ByteTrack dùng nó để giải bài toán matching track <-> detection với cost matrix IoU.
 #define LARGE 1000000
 
 #if !defined TRUE
@@ -49,7 +51,6 @@
 #define PRINT_INDEX_ARRAY(a, n)
 #endif
 
-
 typedef signed int int_t;
 typedef unsigned int uint_t;
 typedef double cost_t;
@@ -57,7 +58,7 @@ typedef char boolean;
 typedef enum fp_t { FP_1 = 1, FP_2 = 2, FP_DYNAMIC = 3 } fp_t;
 
 extern int_t lapjv_internal(
-	const uint_t n, cost_t *cost[],
-	int_t *x, int_t *y);
+    const uint_t n, cost_t *cost[],
+    int_t *x, int_t *y);
 
 #endif // LAPJV_H
