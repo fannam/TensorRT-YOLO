@@ -1,17 +1,18 @@
-# TensorRT deploy YOLO11 — detect, pose, segment, tracking
+# TensorRT-YOLO
 
 > **Based on original work by [emptysoal](https://github.com/emptysoal/TensorRT-YOLO11).**
-> This fork integrates support for **TensorRT 10**, running in parallel with the original **TensorRT 8** codebase.
-> Tested on **Jetson AGX Orin**.
+> This repo now uses a model-first layout so multiple YOLO families can live side by side under one tree.
+> Current implementation is complete for **YOLO11** and scaffolded for **YOLO26**.
 
 ## Introduction
 
 - Deploy `YOLO11` detect, pose, segment, and tracking tasks using TensorRT;
+- Reserve the same layout for future model families such as `YOLO26`;
 - Supports **TensorRT 8** and **TensorRT 10** (parallel support);
 - Supports `Jetson` series (tested on **Jetson AGX Orin**) and `Linux x86_64`;
 - No CUDA-supported OpenCV required — all tensor operations for pre/post-processing are implemented via CUDA programming;
 - Model conversion: `.pt` -> `.onnx` -> `.plan(.engine)`;
-- Both `Python` and `C++` APIs implemented;
+- Both `Python` and `cpp` APIs implemented;
 - Object-oriented design — easy to integrate into other projects;
 - `C++` version compiles to a shared library for use as an interface in other projects;
 
@@ -73,17 +74,36 @@ Then install OpenCV manually inside the container.
 
 ## Run
 
-`detect`, `pose`, and `segment` directories exist under both `python` and `C++`.
-Follow the `README` in each subdirectory to run each task.
+The repo is organized by model family first, then by runtime:
 
-- [C++ api detect](C%2B%2B/detect)
-- [C++ api pose](C%2B%2B/pose)
-- [C++ api segment](C%2B%2B/segment)
-- [C++ api track](C%2B%2B/)
-- [Python api detect](python/detect)
-- [Python api pose](python/pose)
-- [Python api segment](python/segment)
-- [Python api track](python/)
+```text
+TensorRT-YOLO/
+├── yolo11/
+│   ├── cpp/
+│   ├── python/
+│   ├── assets/
+│   └── docs/
+├── yolo26/
+│   ├── cpp/
+│   ├── python/
+│   ├── assets/
+│   └── docs/
+├── shared/
+│   ├── cpp/
+│   └── python/
+└── assets/
+```
+
+- [YOLO11 docs](yolo11/docs/README.md)
+- [YOLO11 cpp detect](yolo11/cpp/detect)
+- [YOLO11 cpp pose](yolo11/cpp/pose)
+- [YOLO11 cpp segment](yolo11/cpp/segment)
+- [YOLO11 cpp track](yolo11/cpp/track)
+- [YOLO11 python detect](yolo11/python/detect)
+- [YOLO11 python pose](yolo11/python/pose)
+- [YOLO11 python segment](yolo11/python/segment)
+- [YOLO11 python track](yolo11/python/track)
+- [YOLO26 scaffold](yolo26/docs/README.md)
 
 ## Credits
 

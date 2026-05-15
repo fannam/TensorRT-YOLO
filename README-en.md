@@ -1,14 +1,15 @@
-# TensorRT deploy YOLO11 detect, pose, segment, tracking
+# TensorRT-YOLO
 
 ## Introduction
 
-- Based on `TensorRT-v8` , deploy detect, pose, segment, tracking of `YOLO11`;
+- Deploy detect, pose, segment, and tracking for `YOLO11`;
+- Keep a model-first layout so `YOLO11` and future families such as `YOLO26` can coexist cleanly;
 
 - Support `Jetson` series, also `Linux x86_64`;
 - This project does not need to compile and install `CUDA-supported OpenCV`, all tensor operations related to pre and post processing are implemented by cuda programming;
 - Mode convert: `.pth` -> `.onnx` -> `.plan(.engine)`;
 
-- I use `Python` and `C++` 2 apis to do the implementation;
+- I use `Python` and `cpp` APIs to do the implementation;
 - All of them adopt object-oriented, which is easy to combine with other projects;
 - The `C++` version will also be compiled as a dynamic link library, which is easy to call as an interface in other projects; 
 
@@ -69,14 +70,15 @@ docker pull nvcr.io/nvidia/tensorrt:22.04-py3
 
 ## Run
 
-- There are three directories, `detect`, `pose` and `segment`, in both `python` and `C++` directories 
-- Run as `README` under the `detect`, `pose`， `segment` and `tracking` directories respectively 
+The repository is now organized by model family first and runtime second.
 
-- [C++ api detect](https://github.com/emptysoal/TensorRT-YOLO11/tree/main/C%2B%2B/detect)
-- [C++ api pose](https://github.com/emptysoal/TensorRT-YOLO11/tree/main/C%2B%2B/pose)
-- [C++ api segment](https://github.com/emptysoal/TensorRT-YOLO11/tree/main/C%2B%2B/segment)
-- [C++ api track](https://github.com/emptysoal/TensorRT-YOLO11/tree/main/C%2B%2B/)
-- [Python api detect](https://github.com/emptysoal/TensorRT-YOLO11/tree/main/python/detect)
-- [Python api pose](https://github.com/emptysoal/TensorRT-YOLO11/tree/main/python/pose)
-- [Python api segment](https://github.com/emptysoal/TensorRT-YOLO11/tree/main/python/segment)
-- [Python api track](https://github.com/emptysoal/TensorRT-YOLO11/tree/main/python)
+- [YOLO11 docs](yolo11/docs/README-en.md)
+- [YOLO11 cpp detect](yolo11/cpp/detect)
+- [YOLO11 cpp pose](yolo11/cpp/pose)
+- [YOLO11 cpp segment](yolo11/cpp/segment)
+- [YOLO11 cpp track](yolo11/cpp/track)
+- [YOLO11 python detect](yolo11/python/detect)
+- [YOLO11 python pose](yolo11/python/pose)
+- [YOLO11 python segment](yolo11/python/segment)
+- [YOLO11 python track](yolo11/python/track)
+- [YOLO26 scaffold](yolo26/docs/README-en.md)
