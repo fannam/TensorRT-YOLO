@@ -8,11 +8,24 @@
 
 using namespace nvinfer1;
 
+enum class Precision {
+    kFP32,
+    kFP16
+};
+
+inline const char* precision_to_string(Precision precision) {
+    return precision == Precision::kFP16 ? "FP16" : "FP32";
+}
+
+inline const char* precision_to_cli_name(Precision precision) {
+    return precision == Precision::kFP16 ? "fp16" : "fp32";
+}
+
 // Segment quản lý ba binding chính: input, proto output và detect output.
 class YoloDetector
 {
 public:
-    YoloDetector(const std::string trtFile, const std::string onnxFile);
+    YoloDetector(const std::string trtFile, const std::string onnxFile, Precision precision=Precision::kFP32);
     ~YoloDetector();
     std::vector<Detection> inference(cv::Mat& img);
     double inference_model_only(cv::Mat& img);
@@ -30,6 +43,7 @@ private:
     Logger              gLogger;
     std::string         trtFile_;
     std::string         onnxFile_;
+    Precision           precision_;
 
     ICudaEngine *       engine;
     IRuntime *          runtime;

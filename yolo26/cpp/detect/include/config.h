@@ -17,9 +17,7 @@ const int kNumBoxElement = 7;  // left, top, right, bottom, confidence, class, k
 // const std::string trtFile = "./yolo26m.plan";
 // const std::string testDataDir = "../images";
 
-// for FP16 mode
-const bool bFP16Mode = true;
-// for INT8 mode
+// INT8 vẫn giữ compile-time vì pipeline calibration chưa được expose qua CLI.
 const bool bINT8Mode = false;
 const std::string cacheFile = "./int8.cache";
 const std::string calibrationDataPath = "../calibrator";  // 存放用于 int8 量化校准的图像

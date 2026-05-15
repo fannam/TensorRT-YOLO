@@ -1,6 +1,7 @@
 #include <numeric>
 #include <algorithm>
 #include <string>
+#include <vector>
 #ifdef ENABLE_ONNXRUNTIME
 #include <onnxruntime_cxx_api.h>
 #endif
@@ -50,26 +51,85 @@ static std::string resolve_onnx_path(const std::string& modelArg) {
     return "../onnx_model/" + modelArg + ".onnx";
 }
 
+struct CliOptions {
+    std::string imageDir;
+    std::string modelArg;
+    std::string planFile;
+    Precision precision = Precision::kFP32;
+};
+
+static void print_usage() {
+    printf("Usage: ./segment [image dir] [onnx file|model name] [plan file optional] [--precision fp16|fp32]\n");
+    printf("Example: ./segment ../images yolo26m-seg --precision fp32\n");
+    printf("Example: ./segment ../images ../onnx_model/yolo26m-seg.onnx ./yolo26m-seg.plan --precision fp16\n");
+}
+
+static bool parse_precision(const std::string& value, Precision& precision) {
+    if (value == "fp16") {
+        precision = Precision::kFP16;
+        return true;
+    }
+    if (value == "fp32") {
+        precision = Precision::kFP32;
+        return true;
+    }
+    return false;
+}
+
+static bool parse_cli(int argc, char* argv[], CliOptions& options) {
+    std::vector<std::string> positionalArgs;
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--precision") {
+            if (i + 1 >= argc || !parse_precision(argv[i + 1], options.precision)) {
+                return false;
+            }
+            ++i;
+            continue;
+        }
+        if (arg.rfind("--", 0) == 0) {
+            return false;
+        }
+        positionalArgs.push_back(arg);
+    }
+
+    if (positionalArgs.size() < 2 || positionalArgs.size() > 3) {
+        return false;
+    }
+
+    options.imageDir = positionalArgs[0];
+    options.modelArg = positionalArgs[1];
+    if (positionalArgs.size() == 3) {
+        options.planFile = positionalArgs[2];
+    }
+    return true;
+}
+
+static std::string default_plan_path(const std::string& modelName, Precision precision) {
+    return "./" + modelName + "_" + precision_to_cli_name(precision) + ".plan";
+}
+
 static int run_trt_benchmark(
-    char* imageDir,
+    const std::string& imageDir,
     const std::string& onnxPath,
     const std::string& trtPath,
     const std::string& modelName,
+    Precision precision,
     std::vector<double>& model_times,
     std::vector<double>& full_times
 ) {
     std::vector<std::string> file_names;
-    if (read_files_in_dir(imageDir, file_names) < 0) return -1;
+    if (read_files_in_dir(const_cast<char*>(imageDir.c_str()), file_names) < 0) return -1;
     std::sort(file_names.begin(), file_names.end());
 
-    YoloDetector detector(trtPath, onnxPath);
+    YoloDetector detector(trtPath, onnxPath, precision);
 
     cv::Mat dummy(kInputH, kInputW, CV_8UC3, cv::Scalar(114, 114, 114));
     detector.inference_model_only(dummy);
     detector.inference(dummy);
 
     for (auto& fn : file_names) {
-        cv::Mat img = cv::imread(std::string(imageDir) + "/" + fn, cv::IMREAD_COLOR);
+        cv::Mat img = cv::imread(imageDir + "/" + fn, cv::IMREAD_COLOR);
         if (img.empty()) continue;
 
         double model_ms = detector.inference_model_only(img);
@@ -92,10 +152,10 @@ static int run_trt_benchmark(
     return 0;
 }
 
-static int run_ort(char* imageDir, const std::string& onnxPath, std::vector<double>& times_out) {
+static int run_ort(const std::string& imageDir, const std::string& onnxPath, std::vector<double>& times_out) {
 #ifdef ENABLE_ONNXRUNTIME
     std::vector<std::string> file_names;
-    if (read_files_in_dir(imageDir, file_names) < 0) return -1;
+    if (read_files_in_dir(const_cast<char*>(imageDir.c_str()), file_names) < 0) return -1;
     std::sort(file_names.begin(), file_names.end());
 
     Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "ort_bench");
@@ -130,7 +190,7 @@ static int run_ort(char* imageDir, const std::string& onnxPath, std::vector<doub
     }
 
     for (auto& fn : file_names) {
-        cv::Mat img = cv::imread(std::string(imageDir) + "/" + fn, cv::IMREAD_COLOR);
+        cv::Mat img = cv::imread(imageDir + "/" + fn, cv::IMREAD_COLOR);
         if (img.empty()) continue;
 
         preprocess_cpu(img, input_buf.data(), kInputH, kInputW);
@@ -157,16 +217,15 @@ static int run_ort(char* imageDir, const std::string& onnxPath, std::vector<doub
 
 
 int main(int argc, char* argv[]) {
-    if (argc < 3 || argc > 4) {
-        printf("Usage: ./segment [image dir] [onnx file|model name] [plan file optional]\n");
-        printf("Example: ./segment ../images yolo26m-seg\n");
-        printf("Example: ./segment ../images ../onnx_model/yolo26m-seg.onnx ./yolo26m-seg.plan\n");
+    CliOptions options;
+    if (!parse_cli(argc, argv, options)) {
+        print_usage();
         return 1;
     }
 
-    std::string onnxPath = resolve_onnx_path(argv[2]);
+    std::string onnxPath = resolve_onnx_path(options.modelArg);
     std::string modelName = basename_without_ext(onnxPath);
-    std::string trtPath = argc == 4 ? argv[3] : "./" + modelName + ".plan";
+    std::string trtPath = options.planFile.empty() ? default_plan_path(modelName, options.precision) : options.planFile;
     std::vector<double> trt_model_times, trt_full_times;
 #ifdef ENABLE_ONNXRUNTIME
     std::vector<double> ort_times;
@@ -176,12 +235,12 @@ int main(int argc, char* argv[]) {
     std::cout << "TensorRT plan: " << trtPath << "\n";
     std::cout << "Output prefix: " << modelName << "_\n";
 
-    std::cout << "\n=== TensorRT (FP16) ===\n";
-    run_trt_benchmark(argv[1], onnxPath, trtPath, modelName, trt_model_times, trt_full_times);
+    std::cout << "\n=== TensorRT (" << precision_to_string(options.precision) << ") ===\n";
+    run_trt_benchmark(options.imageDir, onnxPath, trtPath, modelName, options.precision, trt_model_times, trt_full_times);
 
 #ifdef ENABLE_ONNXRUNTIME
     std::cout << "\n=== ONNX Runtime (CUDA) ===\n";
-    run_ort(argv[1], onnxPath, ort_times);
+    run_ort(options.imageDir, onnxPath, ort_times);
 #endif
 
     // summary (skip first frame as warm-up)

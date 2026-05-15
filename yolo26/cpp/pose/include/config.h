@@ -16,13 +16,10 @@ const float kConfThresh = 0.25f;
 const int kMaxNumOutputBbox = 1000;  // assume the box outputs no more than kMaxNumOutputBbox boxes that conf >= kNmsThresh;
 const int kNumBoxElement = 7 + kNumKpt * kKptDims;  // left, top, right, bottom, confidence, class, keepflag(whether drop when NMS), 51 keypoints
 
-const std::string onnxFile = "../onnx_model/yolo26m-pose.onnx";
 // const std::string trtFile = "./yolo26m-pose.plan";
 // const std::string testDataDir = "../images";
 
-// for FP16 mode
-const bool bFP16Mode = true;
-// for INT8 mode
+// INT8 vẫn giữ compile-time vì pipeline calibration chưa được expose qua CLI.
 const bool bINT8Mode = false;
 const std::string cacheFile = "./int8.cache";
 const std::string calibrationDataPath = "../calibrator";  // 存放用于 int8 量化校准的图像

@@ -20,8 +20,7 @@ const int kMaxNumOutputBbox = 1000;
 // Mỗi box sau decode chiếm 7 float: [x1, y1, x2, y2, conf, class_id, keep_flag].
 const int kNumBoxElement = 7;
 
-// Builder flag cho TensorRT. Repo giữ ở dạng hằng số để sample dễ đọc hơn CLI động.
-const bool bFP16Mode = false;
+// INT8 vẫn giữ compile-time vì pipeline calibration chưa được expose qua CLI.
 const bool bINT8Mode = false;
 const std::string cacheFile = "./int8.cache";
 // Thư mục ảnh calibration chỉ được dùng khi bINT8Mode=true.

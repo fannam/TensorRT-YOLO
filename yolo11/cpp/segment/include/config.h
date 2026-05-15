@@ -16,7 +16,7 @@ const int kMaxNumOutputBbox = 1000;
 // 7 phần tử detect cơ bản + 32 hệ số mask coefficient.
 const int kNumBoxElement = 7 + 32;
 
-const bool bFP16Mode = true;
+// INT8 vẫn giữ compile-time vì pipeline calibration chưa được expose qua CLI.
 const bool bINT8Mode = false;
 const std::string cacheFile = "./int8.cache";
 const std::string calibrationDataPath = "../calibrator";

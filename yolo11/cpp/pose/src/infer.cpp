@@ -16,8 +16,9 @@ using namespace nvinfer1;
 
 YoloDetector::YoloDetector(
         const std::string trtFile,
-        const std::string onnxFile
-    ): trtFile_(trtFile), onnxFile_(onnxFile)
+        const std::string onnxFile,
+        Precision precision
+    ): trtFile_(trtFile), onnxFile_(onnxFile), precision_(precision)
 {
     gLogger = Logger(ILogger::Severity::kERROR);
     cudaSetDevice(kGpuId);
@@ -107,7 +108,7 @@ void YoloDetector::get_engine(){
         config->setMaxWorkspaceSize(1 << 30);
 #endif
         IInt8Calibrator *     pCalibrator = nullptr;
-        if (bFP16Mode){
+        if (precision_ == Precision::kFP16){
             config->setFlag(BuilderFlag::kFP16);
         }
         if (bINT8Mode){

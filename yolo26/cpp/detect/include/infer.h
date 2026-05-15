@@ -8,6 +8,19 @@
 
 using namespace nvinfer1;
 
+enum class Precision {
+    kFP32,
+    kFP16
+};
+
+inline const char* precision_to_string(Precision precision) {
+    return precision == Precision::kFP16 ? "FP16" : "FP32";
+}
+
+inline const char* precision_to_cli_name(Precision precision) {
+    return precision == Precision::kFP16 ? "fp16" : "fp32";
+}
+
 
 
 class YoloDetector
@@ -16,6 +29,7 @@ public:
     YoloDetector(
         const std::string trtFile,
         const std::string onnxFile,
+        Precision precision=Precision::kFP32,
         int gpuId=kGpuId,
         float nmsThresh=kNmsThresh,
         float confThresh=kConfThresh,
@@ -33,6 +47,7 @@ private:
     Logger              gLogger;
     std::string         trtFile_;
     std::string         onnxFile_;
+    Precision           precision_;
 
     int                 numClass_;
     float               nmsThresh_;

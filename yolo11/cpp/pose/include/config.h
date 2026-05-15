@@ -18,9 +18,7 @@ const int kMaxNumOutputBbox = 1000;
 // 7 phần tử detect cơ bản + 17 * 3 giá trị keypoint.
 const int kNumBoxElement = 7 + kNumKpt * kKptDims;
 
-const std::string onnxFile = "../onnx_model/yolo11s-pose.onnx";
-
-const bool bFP16Mode = false;
+// INT8 vẫn giữ compile-time vì pipeline calibration chưa được expose qua CLI.
 const bool bINT8Mode = false;
 const std::string cacheFile = "./int8.cache";
 const std::string calibrationDataPath = "../calibrator";
