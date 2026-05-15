@@ -36,5 +36,5 @@ cuda_add_library(trt_yolo11_pose SHARED ${SRCS})
 target_link_libraries(trt_yolo11_pose cudart nvinfer nvonnxparser ${OpenCV_LIBS})
 
 # ======== main execute file ========
-add_executable(trt_yolo11_pose_cli ${PROJECT_SOURCE_DIR}/main.cpp)
-target_link_libraries(trt_yolo11_pose_cli trt_yolo11_pose)
+add_executable(pose ${PROJECT_SOURCE_DIR}/main.cpp)
+target_link_libraries(pose trt_yolo11_pose)

@@ -48,7 +48,7 @@ mkdir build
 cd build
 cmake ..
 make
-./trt_yolo11_detect_cli ../images yolo11s  # 不存在trt模型时，会先构建trt模型然后推理；存在trt模型时，直接加载trt模型然后推理
+./detect ../images yolo11s  # 不存在trt模型时，会先构建trt模型然后推理；存在trt模型时，直接加载trt模型然后推理
 ```
 
 之后转换后的模型，以及首次 TensorRT 的推理结果都会保存到当前目录下

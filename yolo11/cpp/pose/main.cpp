@@ -70,9 +70,9 @@ static int run_trt_benchmark(
 int main(int argc, char *argv[])
 {
     if (argc < 3 || argc > 4) {
-        printf("Usage: ./trt_yolo11_pose_cli [image dir] [onnx file|model name] [plan file optional]\n");
-        printf("Example: ./trt_yolo11_pose_cli ../images yolo11s-pose\n");
-        printf("Example: ./trt_yolo11_pose_cli ../images ../onnx_model/yolo11s-pose.onnx ./yolo11s-pose.plan\n");
+        printf("Usage: ./pose [image dir] [onnx file|model name] [plan file optional]\n");
+        printf("Example: ./pose ../images yolo11s-pose\n");
+        printf("Example: ./pose ../images ../onnx_model/yolo11s-pose.onnx ./yolo11s-pose.plan\n");
         return 1;
     }
 

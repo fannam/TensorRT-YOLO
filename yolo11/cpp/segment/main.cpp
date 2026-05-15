@@ -158,9 +158,9 @@ static int run_ort(char* imageDir, const std::string& onnxPath, std::vector<doub
 
 int main(int argc, char* argv[]) {
     if (argc < 3 || argc > 4) {
-        printf("Usage: ./trt_yolo11_segment_cli [image dir] [onnx file|model name] [plan file optional]\n");
-        printf("Example: ./trt_yolo11_segment_cli ../images yolo11s-seg\n");
-        printf("Example: ./trt_yolo11_segment_cli ../images ../onnx_model/yolo11l-seg.onnx ./yolo11l-seg.plan\n");
+        printf("Usage: ./segment [image dir] [onnx file|model name] [plan file optional]\n");
+        printf("Example: ./segment ../images yolo11s-seg\n");
+        printf("Example: ./segment ../images ../onnx_model/yolo11l-seg.onnx ./yolo11l-seg.plan\n");
         return 1;
     }
 

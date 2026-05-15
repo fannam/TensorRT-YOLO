@@ -167,9 +167,9 @@ static int run_ort(char* imageDir, const std::string& onnxPath, std::vector<doub
 
 int main(int argc, char* argv[]) {
     if (argc < 3 || argc > 4) {
-        printf("Usage: ./trt_yolo11_detect_cli [image dir] [onnx file|model name] [plan file optional]\n");
-        printf("Example: ./trt_yolo11_detect_cli ../images yolo11s\n");
-        printf("Example: ./trt_yolo11_detect_cli ../images ../onnx_model/yolo11s.onnx ./yolo11s.plan\n");
+        printf("Usage: ./detect [image dir] [onnx file|model name] [plan file optional]\n");
+        printf("Example: ./detect ../images yolo11s\n");
+        printf("Example: ./detect ../images ../onnx_model/yolo11s.onnx ./yolo11s.plan\n");
         return 1;
     }
 

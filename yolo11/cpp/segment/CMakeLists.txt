@@ -38,12 +38,12 @@ cuda_add_library(trt_yolo11_segment SHARED ${SRCS})
 target_link_libraries(trt_yolo11_segment cudart nvinfer nvonnxparser ${OpenCV_LIBS})
 
 # ======== main execute file ========
-add_executable(trt_yolo11_segment_cli ${PROJECT_SOURCE_DIR}/main.cpp)
-target_link_libraries(trt_yolo11_segment_cli trt_yolo11_segment)
+add_executable(segment ${PROJECT_SOURCE_DIR}/main.cpp)
+target_link_libraries(segment trt_yolo11_segment)
 
 if (ENABLE_ONNXRUNTIME)
   include_directories(/usr/local/include)
   link_directories(/usr/local/lib)
-  target_compile_definitions(trt_yolo11_segment_cli PRIVATE ENABLE_ONNXRUNTIME)
-  target_link_libraries(trt_yolo11_segment_cli onnxruntime)
+  target_compile_definitions(segment PRIVATE ENABLE_ONNXRUNTIME)
+  target_link_libraries(segment onnxruntime)
 endif()

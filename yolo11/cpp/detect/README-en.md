@@ -40,5 +40,5 @@ mkdir build
 cd build
 cmake ..
 make
-./trt_yolo11_detect_cli ../images yolo11s
+./detect ../images yolo11s
 ```

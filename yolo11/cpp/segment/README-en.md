@@ -40,5 +40,5 @@ mkdir build
 cd build
 cmake ..
 make
-./trt_yolo11_segment_cli ../images yolo11s-seg
+./segment ../images yolo11s-seg
 ```

@@ -40,5 +40,5 @@ mkdir build
 cd build
 cmake ..
 make
-./trt_yolo11_pose_cli ../images yolo11s-pose
+./pose ../images yolo11s-pose
 ```
