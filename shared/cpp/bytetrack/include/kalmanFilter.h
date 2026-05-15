@@ -4,8 +4,8 @@
 
 namespace byte_kalman
 {
-    // KalmanFilter của ByteTrack vận hành trong không gian xyah:
-    // x, y là tâm box; a là aspect ratio; h là chiều cao.
+    // ByteTrack's KalmanFilter operates in xyah space:
+    // x and y are the box center, a is aspect ratio, and h is height.
     class KalmanFilter
     {
     public:
@@ -25,8 +25,8 @@ namespace byte_kalman
             bool only_position = false);
 
     private:
-        // motion_mat: từ state hiện tại sang state frame kế tiếp
-        // update_mat: chiếu state 8D xuống measurement 4D
+        // motion_mat: transforms the current state into the next-frame state
+        // update_mat: projects the 8D state down to the 4D measurement space
         Eigen::Matrix<float, 8, 8, Eigen::RowMajor> _motion_mat;
         Eigen::Matrix<float, 4, 8, Eigen::RowMajor> _update_mat;
         float _std_weight_position;

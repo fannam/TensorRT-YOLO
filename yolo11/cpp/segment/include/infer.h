@@ -21,7 +21,7 @@ inline const char* precision_to_cli_name(Precision precision) {
     return precision == Precision::kFP16 ? "fp16" : "fp32";
 }
 
-// Segment quản lý ba binding chính: input, proto output và detect output.
+// Segment manages three primary bindings: input, proto output, and detect output.
 class YoloDetector
 {
 public:
@@ -33,7 +33,7 @@ public:
 
 private:
     void get_engine();
-    // Ghép mask coefficient với proto để tái tạo mask từng detection ngay trên GPU.
+    // Combine mask coefficients with the proto tensor to reconstruct each detection mask directly on the GPU.
     static void process_mask(
         float* protoDevice, Dims protoOutDims, std::vector<Detection>& vDetections,
         int kInputH, int kInputW, cv::Mat& img, cudaStream_t stream
@@ -57,7 +57,7 @@ private:
     float *             decodeDevice;
 
     int                 OUTPUT_CANDIDATES;
-    // Proto thường có shape [1, 32, 160, 160] và là "dictionary" để tái tạo mask.
+    // Proto typically has shape [1, 32, 160, 160] and acts as the dictionary used for mask reconstruction.
     Dims                protoOutDims;
 
     int                 inputIndex_;

@@ -1,7 +1,7 @@
 # -*- coding:utf-8 -*-
 
 """
-    onnx 模型转 tensorrt 模型，并使用 tensorrt python api 推理
+    Convert an ONNX model to a TensorRT engine and run inference through the TensorRT Python API
 """
 
 import os
@@ -80,7 +80,7 @@ def get_engine():
 
 def inference_one(data_input, context, buffer_h, buffer_d):
     """
-        使用tensorrt runtime 做一次推理
+        Run one inference pass with the TensorRT runtime
     """
     buffer_h[0] = np.ascontiguousarray(data_input)
     cudart.cudaMemcpy(buffer_d[0], buffer_h[0].ctypes.data, buffer_h[0].nbytes,
@@ -99,12 +99,12 @@ def inference_one(data_input, context, buffer_h, buffer_d):
 
 def draw_image(image, bboxes, kpts, draw_bbox=True, kpt_line=True):
     """
-        绘制检测到的检测框和关键点到原图上
-    :param image: 原始图像，用于绘制检测结果
-    :param bboxes: 检测框信息，shape为 (num_boxes, 6), 6: x1, y1, x2, y2, conf, class id
-    :param kpts: 关键点信息，shape为 (num_boxes, 17， 3), 17: 每个目标的关键点个数, 3: x, y, visible
-    :param draw_bbox: 是否绘制矩形检测框
-    :param kpt_line: 是否绘制关键点之间的连线
+        Draw detected bounding boxes and keypoints onto the original image
+    :param image: Original image used to draw detection results
+    :param bboxes: Bounding box data with shape (num_boxes, 6), where 6 = x1, y1, x2, y2, conf, class id
+    :param kpts: Keypoint data with shape (num_boxes, 17, 3), where 17 is the number of keypoints per object and 3 = x, y, visible
+    :param draw_bbox: Whether to draw bounding boxes
+    :param kpt_line: Whether to draw lines between keypoints
     """
     if not bboxes.shape[0]:
         return

@@ -18,8 +18,8 @@ BYTETracker::~BYTETracker()
 
 vector<STrack> BYTETracker::update(const vector<Object>& objects)
 {
-	// Step 1: tách detection thành hai tầng điểm số.
-	// High-score detections dùng cho lượt ghép chính, low-score detections dùng để cứu track khó.
+	// Step 1: split detections into two score tiers.
+	// High-score detections are used in the primary association pass; low-score detections help recover difficult tracks.
 	this->frame_id++;
 	vector<STrack> activated_stracks;
 	vector<STrack> refind_stracks;
@@ -64,9 +64,9 @@ vector<STrack> BYTETracker::update(const vector<Object>& objects)
 		}
 	}
 
-	// Chia tracked pool hiện tại thành:
-	// - unconfirmed: track mới xuất hiện quá ít frame
-	// - tracked_stracks: track đã được xác nhận
+	// Split the current tracked pool into:
+	// - unconfirmed: tracks that have appeared for too few frames
+	// - tracked_stracks: confirmed tracks
 	for (int i = 0; i < this->tracked_stracks.size(); i++)
 	{
 		if (!this->tracked_stracks[i].is_activated)
@@ -75,7 +75,7 @@ vector<STrack> BYTETracker::update(const vector<Object>& objects)
 			tracked_stracks.push_back(&this->tracked_stracks[i]);
 	}
 
-	// Step 2: ghép lần 1 giữa (tracked + lost) với detection điểm cao bằng IoU cost.
+	// Step 2: first association between (tracked + lost) and high-score detections using IoU cost.
 	strack_pool = joint_stracks(tracked_stracks, this->lost_stracks);
 	STrack::multi_predict(strack_pool, this->kalman_filter);
 
@@ -103,8 +103,8 @@ vector<STrack> BYTETracker::update(const vector<Object>& objects)
 		}
 	}
 
-	// Step 3: ghép lần 2 giữa track đang Tracked nhưng trượt lượt 1 với detection điểm thấp.
-	// Đây là ý tưởng quan trọng của ByteTrack: low-score box vẫn hữu ích để giữ ID continuity.
+	// Step 3: second association between currently Tracked tracks that missed pass 1 and low-score detections.
+	// This is a key ByteTrack idea: low-score boxes are still useful for preserving ID continuity.
 	for (int i = 0; i < u_detection.size(); i++)
 	{
 		detections_cp.push_back(detections[u_detection[i]]);
@@ -154,8 +154,8 @@ vector<STrack> BYTETracker::update(const vector<Object>& objects)
 		}
 	}
 
-	// Bước 4 phụ: xử lý unconfirmed track.
-	// Track chỉ lóe lên 1 frame mà không ghép lại được sẽ bị loại sớm để tránh sinh ID rác.
+	// Extra step 4: handle unconfirmed tracks.
+	// Tracks that flash for only one frame and cannot be matched again are removed early to avoid noisy IDs.
 	detections.clear();
 	detections.assign(detections_cp.begin(), detections_cp.end());
 
@@ -180,7 +180,7 @@ vector<STrack> BYTETracker::update(const vector<Object>& objects)
 		removed_stracks.push_back(*track);
 	}
 
-	// Step 4: khởi tạo track mới từ detection chưa ghép nhưng đủ high_thresh.
+	// Step 4: initialize new tracks from unmatched detections that still meet high_thresh.
 	for (int i = 0; i < u_detection.size(); i++)
 	{
 		STrack *track = &detections[u_detection[i]];
@@ -190,7 +190,7 @@ vector<STrack> BYTETracker::update(const vector<Object>& objects)
 		activated_stracks.push_back(*track);
 	}
 
-	// Step 5: cập nhật ba pool trạng thái và dọn duplicate/expired track.
+	// Step 5: update the three state pools and clean duplicate/expired tracks.
 	for (int i = 0; i < this->lost_stracks.size(); i++)
 	{
 		if (this->frame_id - this->lost_stracks[i].end_frame() > this->max_time_lost)

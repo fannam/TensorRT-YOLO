@@ -10,8 +10,8 @@
 #include "utils.h"
 #include "infer.h"
 
-// Binary segment đo riêng model-only và full pipeline.
-// Với full pipeline, phần mask reconstruction thường chiếm đáng kể thời gian hơn detect thuần.
+// The segment binary measures model-only and full-pipeline timings separately.
+// In the full pipeline, mask reconstruction usually costs noticeably more than plain detection.
 
 #ifdef ENABLE_ONNXRUNTIME
 static void preprocess_cpu(const cv::Mat& img, float* data, int th, int tw) {

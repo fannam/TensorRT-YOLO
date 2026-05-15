@@ -5,10 +5,10 @@
 #include <cuda_runtime.h>
 #include "config.h"
 
-// Đổi head output từ [56, 8400] sang [8400, 56] để mỗi candidate nằm liền mạch.
+// Convert head output from [56, 8400] to [8400, 56] so each candidate is contiguous in memory.
 void transpose(float* src, float* dst, int numBboxes, int numElements, cudaStream_t stream);
 
-// Decode bbox + class + toàn bộ vector keypoint của mỗi candidate.
+// Decode bbox + class + the full keypoint vector for each candidate.
 void decode(float* src, float* dst, int numBboxes, int numClasses, int numKpts, float confThresh, int maxObjects, int numBoxElement, cudaStream_t stream);
 
 void nms(float* data, float kNmsThresh, int maxObjects, int numBoxElement, cudaStream_t stream);
@@ -27,8 +27,8 @@ __inline__ void scale_bbox(cv::Mat& img, float bbox[4]){
 }
 
 __inline__ std::vector<std::vector<float>> scale_kpt_coords(cv::Mat& img, float* pkpt){
-    // Keypoint được decode trong không gian letterbox 640x640, nên phải đảo padding/scale
-    // giống bbox trước khi vẽ hoặc tiêu thụ tiếp.
+    // Keypoints are decoded in 640x640 letterbox space, so padding/scale must be inverted
+    // just like bbox coordinates before drawing or further processing.
     float r_w = kInputW / (img.cols * 1.0);
     float r_h = kInputH / (img.rows * 1.0);
     float r = std::min(r_w, r_h);

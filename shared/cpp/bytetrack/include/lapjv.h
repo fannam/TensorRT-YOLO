@@ -1,8 +1,8 @@
 #ifndef LAPJV_H
 #define LAPJV_H
 
-// lapjv.cpp nhúng một solver Linear Assignment Problem kiểu Jonker-Volgenant.
-// ByteTrack dùng nó để giải bài toán matching track <-> detection với cost matrix IoU.
+// lapjv.cpp embeds a Jonker-Volgenant Linear Assignment Problem solver.
+// ByteTrack uses it to solve track <-> detection matching from an IoU-based cost matrix.
 #define LARGE 1000000
 
 #if !defined TRUE

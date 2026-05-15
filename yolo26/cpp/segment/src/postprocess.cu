@@ -258,25 +258,25 @@ __global__ void resize_kernel(float* masks, int maskNum, int maskHeight, int mas
     float scaleY = (float)dstMaskH / (float)maskHeight;
     float scaleX = (float)dstMaskW / (float)maskWidth;
 
-    // (ix, iy)为目标图像坐标
-    // (before_x, before_y)为原图坐标
+    // (ix, iy) is the coordinate in the destination image
+    // (before_x, before_y) is the coordinate in the source image
     float beforeX = float(ix + 0.5) / scaleX - 0.5;
     float beforeY = float(iy + 0.5) / scaleY - 0.5;
-    // 原图像坐标四个相邻点
-    // 获得变换前最近的四个顶点,取整
+    // Four neighboring points in the source image
+    // Get the nearest four vertices before transformation, rounded to integers
     int topY = static_cast<int>(beforeY);
     int bottomY = topY + 1;
     int leftX = static_cast<int>(beforeX);
     int rightX = leftX + 1;
-    //计算变换前坐标的小数部分
+    // Compute the fractional part of the pre-transform coordinate
     float u = beforeX - leftX;
     float v = beforeY - topY;
 
-    if (topY >= maskHeight - 1){  // 对应原图的坐标位于最后一行
+    if (topY >= maskHeight - 1){  // Corresponding source coordinate is on the last row
         topY = maskHeight - 1;
         bottomY = maskHeight - 1;
     }
-    if (leftX >= maskWidth - 1){  // 对应原图的坐标位于最后一列
+    if (leftX >= maskWidth - 1){  // Corresponding source coordinate is on the last column
         leftX = maskWidth - 1;
         rightX = maskWidth - 1;
     }

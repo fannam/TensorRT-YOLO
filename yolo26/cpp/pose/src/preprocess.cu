@@ -27,28 +27,28 @@ __global__ void letterbox(const uchar* srcData, const int srcH, const int srcW, 
     float scaleY = (float)rszH / (float)srcH;
     float scaleX = (float)rszW / (float)srcW;
 
-    // (ix,iy)为目标图像坐标
-    // (before_x,before_y)原图坐标
+    // (ix, iy) is the coordinate in the destination image
+    // (before_x, before_y) is the coordinate in the source image
     float beforeX = float(ix - startX + 0.5) / scaleX - 0.5;
     float beforeY = float(iy - startY + 0.5) / scaleY - 0.5;
-    // 原图像坐标四个相邻点
-    // 获得变换前最近的四个顶点,取整
+    // Four neighboring points in the source image
+    // Get the nearest four vertices before transformation, rounded to integers
     int topY = static_cast<int>(beforeY);
     int bottomY = topY + 1;
     int leftX = static_cast<int>(beforeX);
     int rightX = leftX + 1;
-    //计算变换前坐标的小数部分
+    // Compute the fractional part of the pre-transform coordinate
     float u = beforeX - leftX;
     float v = beforeY - topY;
 
-    if (topY >= srcH - 1 && leftX >= srcW - 1)  //右下角
+    if (topY >= srcH - 1 && leftX >= srcW - 1)  // bottom-right corner
     {
         for (int k = 0; k < 3; k++)
         {
             tgtData[idx3 + k] = (1. - u) * (1. - v) * srcData[(leftX + topY * srcW) * 3 + k];
         }
     }
-    else if (topY >= srcH - 1)  // 最后一行
+    else if (topY >= srcH - 1)  // last row
     {
         for (int k = 0; k < 3; k++)
         {
@@ -57,7 +57,7 @@ __global__ void letterbox(const uchar* srcData, const int srcH, const int srcW, 
             + (u) * (1. - v) * srcData[(rightX + topY * srcW) * 3 + k];
         }
     }
-    else if (leftX >= srcW - 1)  // 最后一列
+    else if (leftX >= srcW - 1)  // last column
     {
         for (int k = 0; k < 3; k++)
         {
@@ -66,7 +66,7 @@ __global__ void letterbox(const uchar* srcData, const int srcH, const int srcW, 
             + (1. - u) * (v) * srcData[(leftX + bottomY * srcW) * 3 + k];
         }
     }
-    else  // 非最后一行或最后一列情况
+    else  // general case when not on the last row or last column
     {
         for (int k = 0; k < 3; k++)
         {

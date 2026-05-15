@@ -3,10 +3,10 @@
 
 #include <string>
 
-// Dạng detection tối giản sau khi đã:
-// 1) decode head output về bbox xyxy,
-// 2) chạy NMS trên GPU,
-// 3) scale từ không gian letterbox 640x640 về ảnh gốc.
+// Minimal detection representation after:
+// 1) decoding head output into xyxy boxes,
+// 2) running NMS on the GPU,
+// 3) scaling from 640x640 letterbox space back to the original image.
 struct Detection
 {
     float bbox[4];

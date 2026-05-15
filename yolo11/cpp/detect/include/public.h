@@ -17,7 +17,7 @@
 #include <cuda_runtime_api.h>
 #include <opencv2/opencv.hpp>
 
-// CHECK không ném exception; nó in vị trí lỗi để sample nhỏ vẫn dễ lần nguyên nhân.
+// CHECK does not throw exceptions; it prints the failure location so small samples remain easy to debug.
 #define CHECK(call) check(call, __LINE__, __FILE__)
 
 inline bool check(cudaError_t e, int iLine, const char *szFile)
@@ -32,8 +32,8 @@ inline bool check(cudaError_t e, int iLine, const char *szFile)
 
 using namespace nvinfer1;
 
-// Logger mỏng bao quanh ILogger của TensorRT để sample không phải kéo toàn bộ
-// helper phức tạp từ TensorRT samples.
+// Thin wrapper around TensorRT's ILogger so the sample does not need the full
+// helper stack from the official TensorRT samples.
 class Logger : public ILogger
 {
 public:
@@ -70,7 +70,7 @@ public:
     }
 };
 
-// Quy đổi kiểu TensorRT sang số byte để debug binding/buffer.
+// Converts TensorRT data types to byte sizes for binding/buffer debugging.
 __inline__ size_t dataTypeToSize(DataType dataType)
 {
     switch ((int)dataType)
@@ -90,7 +90,7 @@ __inline__ size_t dataTypeToSize(DataType dataType)
     }
 }
 
-// Chuẩn hóa Dims thành chuỗi để log shape ở cùng một format.
+// Formats Dims as a string so shape logs use one consistent format.
 __inline__ std::string shapeToString(Dims dim)
 {
     std::string output("(");
@@ -106,7 +106,7 @@ __inline__ std::string shapeToString(Dims dim)
     return output;
 }
 
-// Chuẩn hóa tên kiểu dữ liệu để khi in debug dễ đối chiếu hơn.
+// Normalizes data type names so debug output is easier to compare.
 __inline__ std::string dataTypeToString(DataType dataType)
 {
     switch (dataType)

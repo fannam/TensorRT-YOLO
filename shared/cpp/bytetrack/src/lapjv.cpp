@@ -4,9 +4,9 @@
 
 #include "lapjv.h"
 
-// File này là hiện thực solver Jonker-Volgenant cho Linear Assignment.
-// ByteTrack không cần người đọc hiểu từng vòng lặp vi mô; điều quan trọng là biết
-// nó nhận cost matrix và trả lời ghép tối ưu toàn cục hàng <-> cột.
+// This file implements the Jonker-Volgenant solver for linear assignment.
+// You do not need to understand every micro-loop ByteTrack uses here; the important part is knowing
+// that it takes a cost matrix and returns the globally optimal row <-> column assignment.
 
 /** Column-reduction and reduction transfer for a dense cost matrix.
  */
@@ -173,7 +173,7 @@ uint_t _find_dense(const uint_t n, uint_t lo, cost_t *d, int_t *cols, int_t *y)
 }
 
 
-// Scan các cột ứng viên để nới dần cây đường đi ngắn nhất kiểu Dijkstra sửa đổi.
+// Scan candidate columns to gradually expand the shortest-path tree in a modified Dijkstra-style search.
 int_t _scan_dense(const uint_t n, cost_t *cost[],
 	uint_t *plo, uint_t*phi,
 	cost_t *d, int_t *cols, int_t *pred,

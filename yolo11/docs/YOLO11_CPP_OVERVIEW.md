@@ -1,82 +1,82 @@
 # YOLO11 C++ Overview
 
-Tài liệu này giải thích phần C++ của `yolo11/cpp/*` và cách nó ghép với `shared/cpp/bytetrack`.
+This document explains the C++ portion of `yolo11/cpp/*` and how it connects to `shared/cpp/bytetrack`.
 
-## 1. Bản đồ module
+## 1. Module Map
 
 - `yolo11/cpp/detect`
-  Binary detect ảnh tĩnh. Một output tensor chính từ head detect.
+  Static-image detection binary. It has one primary output tensor from the detection head.
 - `yolo11/cpp/pose`
-  Cùng khung detect nhưng output mỗi candidate còn mang thêm 17 keypoint.
+  Uses the same overall structure as `detect`, but each candidate also carries 17 keypoints.
 - `yolo11/cpp/segment`
-  Có hai output tensor: detect head và proto head để tái tạo mask.
+  Uses two output tensors: a detection head and a proto head for mask reconstruction.
 - `yolo11/cpp/track`
-  Không có head tracking riêng. Module này ghép detector `detect` với `BYTETracker`.
+  There is no dedicated tracking head. This module combines the `detect` detector with `BYTETracker`.
 - `shared/cpp/bytetrack`
-  Chứa state machine tracking, Kalman filter, IoU cost và solver assignment.
+  Contains the tracking state machine, Kalman filter, IoU cost computation, and assignment solver.
 
-## 2. Luồng dữ liệu end-to-end
+## 2. End-to-End Data Flow
 
 ### Detect
 
-1. `main.cpp` resolve đường dẫn ONNX và `.plan`.
-2. `YoloDetector` trong `src/infer.cpp`:
-   - nạp `.plan` nếu có
-   - nếu chưa có thì build engine từ ONNX rồi serialize lại
+1. `main.cpp` resolves the ONNX and `.plan` paths.
+2. `YoloDetector` in `src/infer.cpp`:
+   - loads `.plan` if it already exists
+   - otherwise builds the engine from ONNX and serializes it
 3. `src/preprocess.cu`
    - letterbox
    - bilinear resize
    - BGR -> RGB
    - HWC -> CHW
-   - normalize về `[0, 1]`
-4. TensorRT enqueue trên cùng CUDA stream.
+   - normalize to `[0, 1]`
+4. TensorRT enqueues work on the same CUDA stream.
 5. `src/postprocess.cu`
    - transpose `[C, N] -> [N, C]`
    - decode bbox/class
-   - NMS trên GPU
-6. `scale_bbox()` đưa bbox từ hệ 640x640 có padding về ảnh gốc.
+   - run GPU NMS
+6. `scale_bbox()` maps boxes from the padded 640x640 space back to the original image.
 
 ### Pose
 
-Luồng giống detect, nhưng bước decode giữ thêm `17 * 3 = 51` giá trị keypoint.
+The flow is the same as `detect`, but the decode step also preserves `17 * 3 = 51` keypoint values.
 
-Sau khi copy về host:
+After copying back to the host:
 
-- `scale_bbox()` scale bbox về ảnh gốc
-- `scale_kpt_coords()` scale từng keypoint về ảnh gốc
-- `draw_image()` có thể vẽ bbox, keypoint và skeleton COCO
+- `scale_bbox()` rescales the box to the original image
+- `scale_kpt_coords()` rescales each keypoint to the original image
+- `draw_image()` can render boxes, keypoints, and the COCO skeleton
 
 ### Segment
 
-Luồng khác ở hai điểm:
+The flow differs in two places:
 
-1. TensorRT có hai output:
-   - `proto`: thường là `[1, 32, 160, 160]`
-   - `detect`: thường là `[1, 116, 8400]`
-2. Sau decode + NMS, `process_mask()`:
-   - gom `n` vector coefficient dài 32 của `n` detection
-   - nhân với proto để tạo `n` mask ở độ phân giải `160x160`
-   - crop theo bbox
-   - cắt bỏ vùng padding do letterbox
-   - resize về đúng kích thước ảnh gốc
+1. TensorRT has two outputs:
+   - `proto`: typically `[1, 32, 160, 160]`
+   - `detect`: typically `[1, 116, 8400]`
+2. After decode + NMS, `process_mask()`:
+   - gathers the 32-element coefficient vector for each detection
+   - multiplies those coefficients by the proto tensor to produce masks at `160x160`
+   - crops by bbox
+   - removes letterbox padding
+   - resizes each mask to the original image size
 
-## 3. Tensor shape map
+## 3. Tensor Shape Map
 
 ### Detect
 
 - Input: `[1, 3, 640, 640]`
 - Raw output: `[1, 84, 8400]`
-- Sau transpose: `[8400, 84]`
-- Sau decode: `[count, boxes...]`, mỗi box có 7 float
+- After transpose: `[8400, 84]`
+- After decode: `[count, boxes...]`, with 7 floats per box
 
-`84 = 4 bbox + 80 class`
+`84 = 4 bbox + 80 classes`
 
 ### Pose
 
 - Input: `[1, 3, 640, 640]`
 - Raw output: `[1, 56, 8400]`
-- Sau transpose: `[8400, 56]`
-- Sau decode: mỗi box có `7 + 51 = 58` float
+- After transpose: `[8400, 56]`
+- After decode: each box has `7 + 51 = 58` floats
 
 `56 = 4 bbox + 1 class + 51 keypoint values`
 
@@ -85,104 +85,104 @@ Luồng khác ở hai điểm:
 - Input: `[1, 3, 640, 640]`
 - Proto output: `[1, 32, 160, 160]`
 - Detect output: `[1, 116, 8400]`
-- Sau transpose detect: `[8400, 116]`
-- Sau decode: mỗi box có `7 + 32 = 39` float
+- After detect transpose: `[8400, 116]`
+- After decode: each box has `7 + 32 = 39` floats
 
-`116 = 4 bbox + 80 class + 32 mask coefficient`
+`116 = 4 bbox + 80 classes + 32 mask coefficients`
 
-## 4. Memory map
+## 4. Memory Map
 
-### Resource sống lâu
+### Long-Lived Resources
 
-Mỗi `YoloDetector` giữ:
+Each `YoloDetector` keeps:
 
 - `runtime`
 - `engine`
 - `context`
 - `cudaStream_t stream`
-- `vBufferD`: các binding TensorRT
+- `vBufferD`: TensorRT bindings
 - `transposeDevice`
 - `decodeDevice`
-- `outputData` trên host
+- `outputData` on the host
 
 ### Detect/Pose
 
-- `vBufferD[ input ]`: tensor input float32
-- `vBufferD[ output ]`: raw output tensor
-- `transposeDevice`: scratch buffer cho `[C, N] -> [N, C]`
-- `decodeDevice`: buffer phẳng sau decode/NMS
+- `vBufferD[input]`: float32 input tensor
+- `vBufferD[output]`: raw output tensor
+- `transposeDevice`: scratch buffer for `[C, N] -> [N, C]`
+- `decodeDevice`: flat buffer after decode/NMS
 
 ### Segment
 
-Có thêm:
+Additional resources:
 
-- `vBufferD[ proto ]`: proto tensor từ head mask
-- vùng tạm trong `process_mask()`:
+- `vBufferD[proto]`: proto tensor from the mask head
+- temporary buffers inside `process_mask()`:
   - `maskCoefDevice`
   - `maskDevice`
   - `bboxDevice`
   - `cutMaskDevice`
   - `scaledMaskDevice`
 
-Các buffer tạm này được cấp phát trong `process_mask()` rồi giải phóng ngay sau khi copy mask về host.
+These temporary buffers are allocated inside `process_mask()` and freed immediately after the masks are copied back to the host.
 
-## 5. TRT8 và TRT10 khác nhau ở đâu
+## 5. What Changes Between TRT8 and TRT10
 
-Repo đang giữ hai nhánh tương thích:
+The repo keeps two compatibility branches:
 
 - TRT10:
-  - enumerate tensor bằng `getNbIOTensors()`
-  - set binding bằng tên tensor
-  - enqueue bằng `enqueueV3()`
+  - enumerate tensors with `getNbIOTensors()`
+  - set bindings by tensor name
+  - enqueue with `enqueueV3()`
 - TRT8/9:
-  - enumerate binding bằng `getNbBindings()`
-  - set shape bằng binding index
-  - enqueue bằng `enqueueV2()`
+  - enumerate bindings with `getNbBindings()`
+  - set shapes by binding index
+  - enqueue with `enqueueV2()`
 
-Lý do comment phần này kỹ trong code là vì shape/binding lookup là chỗ người mới rất hay nhầm khi nâng version TensorRT.
+This is heavily commented in the code because shape and binding lookup are common sources of confusion when upgrading TensorRT versions.
 
-## 6. FP16 và INT8
+## 6. FP16 and INT8
 
 - `bFP16Mode`
-  Bật flag FP16 cho builder. Không đổi luồng runtime.
+  Enables the FP16 builder flag. It does not change the runtime flow.
 - `bINT8Mode`
-  Bật calibration path:
-  - đọc ảnh trong `../calibrator`
-  - preprocess trên CPU
-  - ghi hoặc đọc `int8.cache`
+  Enables the calibration path:
+  - read images from `../calibrator`
+  - preprocess on the CPU
+  - write or read `int8.cache`
 
-INT8 chỉ tác động ở lúc build engine, không tác động vào vòng inference thường ngày nếu `.plan` đã tồn tại.
+INT8 only affects engine build time. It does not change the normal inference loop once the `.plan` file already exists.
 
 ## 7. Detect vs Pose vs Segment
 
 - `detect`
-  Nhẹ nhất, chỉ cần bbox/class.
+  The lightest path, requiring only bbox/class output.
 - `pose`
-  Cùng detect nhưng mỗi candidate thêm 51 số keypoint.
+  Extends detect by attaching 51 keypoint values to each candidate.
 - `segment`
-  Tốn hậu xử lý nhất vì phải tái tạo mask từ `proto + coefficient`.
+  Has the heaviest postprocess path because it reconstructs masks from `proto + coefficients`.
 
-Nếu cần hiểu pattern chung của cả ba task, nên đọc `detect` trước rồi mới đọc `pose` và `segment`.
+If you want to understand the common pattern across all three tasks, read `detect` first, then `pose`, then `segment`.
 
-## 8. Tracker ăn dữ liệu gì từ detector
+## 8. What the Tracker Consumes From the Detector
 
-`yolo11/cpp/track/main.cpp` lấy output detect và đổi sang:
+`yolo11/cpp/track/main.cpp` converts detect output into:
 
-- `cv::Rect_<float> rect` theo `tlwh`
+- `cv::Rect_<float> rect` in `tlwh` format
 - `label`
 - `prob`
 
-`BYTETracker.update()` không dùng feature embedding. Nó chỉ cần:
+`BYTETracker.update()` does not use feature embeddings. It only needs:
 
 - bbox
 - score
-- state trước đó
-- Kalman predict
-- cost matrix từ IoU
+- prior state
+- Kalman prediction
+- IoU-based cost matrix
 
-## 9. Đọc repo theo thứ tự nào
+## 9. Recommended Reading Order
 
-Khuyến nghị cho người mới:
+Suggested order for newcomers:
 
 1. `yolo11/cpp/detect/main.cpp`
 2. `yolo11/cpp/detect/include/infer.h`
@@ -195,9 +195,9 @@ Khuyến nghị cho người mới:
 9. `shared/cpp/bytetrack/include/STrack.h`
 10. `shared/cpp/bytetrack/src/BYTETracker.cpp`
 
-## 10. Ghi chú về `yolo26`
+## 10. Note on `yolo26`
 
-`yolo26` hiện chỉ nên xem như scaffold/tương đồng layout.
+`yolo26` should currently be treated as a scaffold with a similar layout.
 
-- Đừng dùng nó làm nguồn chân lý để hiểu chi tiết runtime C++.
-- Khi cần hiểu implementation thật, ưu tiên `yolo11`.
+- Do not use it as the source of truth for detailed C++ runtime behavior.
+- When you need the real implementation details, prefer `yolo11`.

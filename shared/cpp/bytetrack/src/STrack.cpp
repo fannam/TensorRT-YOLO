@@ -29,7 +29,7 @@ void STrack::activate(byte_kalman::KalmanFilter &kalman_filter, int frame_id)
 	this->kalman_filter = kalman_filter;
 	this->track_id = this->next_id();
 
-	// Track mới đi từ measurement detector tlwh -> xyah để khởi tạo Kalman state.
+	// A new track converts detector measurement tlwh -> xyah to initialize the Kalman state.
 	vector<float> _tlwh_tmp(4);
 	_tlwh_tmp[0] = this->_tlwh[0];
 	_tlwh_tmp[1] = this->_tlwh[1];
@@ -50,7 +50,7 @@ void STrack::activate(byte_kalman::KalmanFilter &kalman_filter, int frame_id)
 
 	this->tracklet_len = 0;
 	this->state = TrackState::Tracked;
-	// Frame đầu tiên được đánh dấu activated ngay; các frame sau thường còn phải qua bước xác nhận.
+	// The first frame is marked activated immediately; later frames usually still need a confirmation step.
 	if (frame_id == 1)
 	{
 		this->is_activated = true;
@@ -62,7 +62,7 @@ void STrack::activate(byte_kalman::KalmanFilter &kalman_filter, int frame_id)
 
 void STrack::re_activate(STrack &new_track, int frame_id, bool new_id)
 {
-	// Re-activate dùng khi một lost track tìm lại được detection tương ứng.
+	// Re-activate is used when a lost track finds its matching detection again.
 	vector<float> xyah = tlwh_to_xyah(new_track.tlwh);
 	DETECTBOX xyah_box;
 	xyah_box[0] = xyah[0];
@@ -121,7 +121,7 @@ void STrack::static_tlwh()
 		return;
 	}
 
-	// mean đang ở hệ xyah, nên phải đổi ngược về tlwh:
+	// mean is stored in xyah space, so it must be converted back to tlwh:
 	// w = a * h, x_tl = cx - w/2, y_tl = cy - h/2.
 	tlwh[0] = mean[0];
 	tlwh[1] = mean[1];
@@ -143,7 +143,7 @@ void STrack::static_tlbr()
 
 vector<float> STrack::tlwh_to_xyah(vector<float> tlwh_tmp)
 {
-	// Đây là phép đổi hệ toạ độ cốt lõi giữa detector và Kalman của ByteTrack.
+	// This is the core coordinate conversion between ByteTrack's detector side and Kalman side.
 	vector<float> tlwh_output = tlwh_tmp;
 	tlwh_output[0] += tlwh_output[2] / 2;
 	tlwh_output[1] += tlwh_output[3] / 2;
@@ -191,7 +191,7 @@ void STrack::multi_predict(vector<STrack*> &stracks, byte_kalman::KalmanFilter &
 	{
 		if (stracks[i]->state != TrackState::Tracked)
 		{
-			// Lost track không còn tin vào vận tốc chiều cao nữa, nên zero vận tốc vh.
+			// A lost track no longer trusts its height velocity, so vh is zeroed out.
 			stracks[i]->mean[7] = 0;
 		}
 		kalman_filter.predict(stracks[i]->mean, stracks[i]->covariance);

@@ -5,18 +5,18 @@
 #include <cuda_runtime.h>
 #include "config.h"
 
-// Đổi layout head output từ [C, N] sang [N, C] để mỗi thread decode xử lý trọn một candidate.
+// Convert head output layout from [C, N] to [N, C] so each decode thread handles one full candidate.
 void transpose(float* src, float* dst, int numBboxes, int numElements, cudaStream_t stream);
 
-// Decode head output thành mảng phẳng có layout:
-// [count, box0..., box1..., ...], mỗi box có kNumBoxElement float.
+// Decode head output into a flat array with layout:
+// [count, box0..., box1..., ...], with kNumBoxElement floats per box.
 void decode(float* src, float* dst, int numBboxes, int numClasses, float confThresh, int maxObjects, int numBoxElement, cudaStream_t stream);
 
-// NMS cùng class chạy trên GPU để tránh copy toàn bộ 8400 candidate về CPU rồi mới lọc.
+// Per-class NMS runs on the GPU so the code does not need to copy all 8400 candidates back to the CPU before filtering.
 void nms(float* data, float kNmsThresh, int maxObjects, int numBoxElement, cudaStream_t stream);
 
 __inline__ void scale_bbox(cv::Mat& img, float bbox[4]){
-    // Đảo ngược chính xác bước letterbox của preprocess: bỏ padding trước rồi chia theo scale.
+    // Precisely invert preprocess letterboxing: remove padding first, then divide by scale.
     float r_w = kInputW / (img.cols * 1.0);
     float r_h = kInputH / (img.rows * 1.0);
     float r = std::min(r_w, r_h);

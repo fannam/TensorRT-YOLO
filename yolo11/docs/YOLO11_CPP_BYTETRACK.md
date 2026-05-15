@@ -1,23 +1,23 @@
 # YOLO11 C++ ByteTrack Appendix
 
-Tài liệu này chỉ tập trung vào `shared/cpp/bytetrack` và cách `yolo11/cpp/track` sử dụng nó.
+This document focuses only on `shared/cpp/bytetrack` and how `yolo11/cpp/track` uses it.
 
-## 1. Các abstraction chính
+## 1. Core Abstractions
 
 - `Object`
-  Detection đầu vào cho tracker: `rect + label + prob`
+  Tracker input detection: `rect + label + prob`
 - `STrack`
-  Một track có trạng thái và lịch sử
+  A track with state and history
 - `TrackState`
   `New`, `Tracked`, `Lost`, `Removed`
 - `BYTETracker`
-  Điều phối toàn bộ pipeline update theo từng frame
+  Coordinates the full per-frame update pipeline
 - `KalmanFilter`
-  Dự đoán và cập nhật state động học bbox
+  Predicts and updates box motion state
 - `lapjv`
-  Solver assignment tối ưu cho cost matrix
+  Assignment solver for the cost matrix
 
-## 2. Ba hệ toạ độ bbox cần nhớ
+## 2. The Three Bounding-Box Coordinate Systems
 
 - `tlwh`
   `[top-left x, top-left y, width, height]`
@@ -26,155 +26,155 @@ Tài liệu này chỉ tập trung vào `shared/cpp/bytetrack` và cách `yolo11
 - `xyah`
   `[center_x, center_y, aspect_ratio, height]`
 
-ByteTrack dùng:
+ByteTrack uses:
 
-- `tlwh` để giao tiếp gần detector và draw
-- `tlbr` để tính IoU
-- `xyah` làm measurement/state cho Kalman
+- `tlwh` for detector-adjacent communication and drawing
+- `tlbr` for IoU computation
+- `xyah` as the Kalman measurement/state representation
 
-## 3. State vector Kalman
+## 3. Kalman State Vector
 
-State 8 chiều:
+8D state:
 
 `[x, y, a, h, vx, vy, va, vh]`
 
-Trong đó:
+Where:
 
 - `x, y`
-  tâm bbox
+  bbox center
 - `a`
   aspect ratio = `w / h`
 - `h`
-  chiều cao bbox
+  bbox height
 - `vx, vy, va, vh`
-  vận tốc tương ứng
+  corresponding velocities
 
-Lý do dùng `xyah` thay vì `xywh` là aspect ratio ổn định hơn width tuyệt đối trong nhiều cảnh tracking.
+`xyah` is used instead of `xywh` because aspect ratio is more stable than absolute width in many tracking scenes.
 
-## 4. State machine update của ByteTrack
+## 4. ByteTrack State-Machine Update
 
-Trong `BYTETracker::update()` có thể đọc theo 5 bước:
+You can read `BYTETracker::update()` as five stages:
 
-### Bước 1. Tách detection điểm cao và điểm thấp
+### Step 1. Split high-score and low-score detections
 
 - `score >= track_thresh`
-  vào `detections`
-- còn lại
-  vào `detections_low`
+  goes into `detections`
+- everything else
+  goes into `detections_low`
 
-Ý tưởng cốt lõi của ByteTrack là không bỏ hẳn low-score detections.
+The core ByteTrack idea is to avoid discarding low-score detections entirely.
 
-### Bước 2. Ghép lần 1 với `tracked + lost`
+### Step 2. First association with `tracked + lost`
 
-- gộp `tracked_stracks` và `lost_stracks` thành `strack_pool`
-- chạy `STrack::multi_predict()` để Kalman dự đoán vị trí frame hiện tại
-- tính `iou_distance()`
-- giải assignment bằng `lapjv()`
+- merge `tracked_stracks` and `lost_stracks` into `strack_pool`
+- run `STrack::multi_predict()` so Kalman predicts positions for the current frame
+- compute `iou_distance()`
+- solve assignment with `lapjv()`
 
-Kết quả:
+Result:
 
-- matched track được `update()` hoặc `re_activate()`
-- unmatched track đi tiếp sang bước sau
+- matched tracks are `update()`d or `re_activate()`d
+- unmatched tracks continue to the next stage
 
-### Bước 3. Ghép lần 2 với low-score detections
+### Step 3. Second association with low-score detections
 
-Chỉ những track đang `Tracked` nhưng trượt lượt 1 mới tham gia.
+Only tracks currently in `Tracked` state that missed the first pass participate here.
 
-Mục đích:
+Purpose:
 
-- giữ continuity cho object bị detector chấm điểm thấp trong vài frame
-- giảm ID switch
+- preserve continuity when the detector gives an object a low score for a few frames
+- reduce ID switches
 
-### Bước 4. Xử lý unconfirmed và track mới
+### Step 4. Handle unconfirmed and new tracks
 
 - `unconfirmed`
-  là track mới xuất hiện quá ít frame
-- nếu unconfirmed không ghép lại được
+  means tracks that have appeared for too few frames
+- if an unconfirmed track cannot be matched again
   -> `Removed`
-- detection còn dư nhưng đủ `high_thresh`
-  -> `activate()` thành track mới
+- leftover detections that still meet `high_thresh`
+  -> `activate()` as new tracks
 
-### Bước 5. Dọn pool trạng thái
+### Step 5. Clean up state pools
 
-- lost quá `max_time_lost`
+- tracks lost for longer than `max_time_lost`
   -> `Removed`
-- merge lại `tracked`, `lost`, `removed`
-- loại track trùng lặp bằng `remove_duplicate_stracks()`
+- merge `tracked`, `lost`, and `removed`
+- remove duplicate tracks with `remove_duplicate_stracks()`
 
-## 5. Kalman predict/update diễn ra thế nào
+## 5. How Kalman Predict/Update Works
 
 ### `initiate()`
 
-Tạo track mới:
+Create a new track:
 
-- measurement từ detector đổi sang `xyah`
-- vận tốc khởi tạo bằng 0
-- covariance khởi tạo theo kích thước bbox
+- convert the detector measurement to `xyah`
+- initialize velocity to zero
+- initialize covariance based on bbox size
 
 ### `predict()`
 
-Đẩy state sang frame kế tiếp:
+Advance the state to the next frame:
 
 - `x += vx`
 - `y += vy`
 - `a += va`
 - `h += vh`
 
-đồng thời cộng motion noise.
+and add motion noise.
 
 ### `project()`
 
-Chiếu state 8D về measurement space 4D để so sánh với detection mới.
+Project the 8D state into 4D measurement space for comparison with a new detection.
 
 ### `update()`
 
-Dùng measurement detector sửa lại state dự đoán:
+Use the detector measurement to correct the prediction:
 
 - innovation = detection - prediction
-- Kalman gain quyết định "tin detector bao nhiêu"
+- Kalman gain decides how much to trust the detector
 
-## 6. IoU và assignment flow
+## 6. IoU and Assignment Flow
 
-`iou_distance()` làm:
+`iou_distance()` does:
 
-1. chuyển track sang `tlbr`
-2. tính IoU matrix
-3. đổi sang cost matrix bằng `1 - IoU`
+1. convert tracks to `tlbr`
+2. compute the IoU matrix
+3. convert it to a cost matrix using `1 - IoU`
 
-`linear_assignment()` làm:
+`linear_assignment()` does:
 
-1. gọi `lapjv()`
-2. thu về:
+1. call `lapjv()`
+2. return:
    - `matches`
    - `unmatched_a`
    - `unmatched_b`
 
-`cost_limit` chính là ngưỡng để một cặp còn được chấp nhận.
+`cost_limit` is the threshold that determines whether a pair is still accepted.
 
-## 7. Ý nghĩa một số trường trong `STrack`
+## 7. Meaning of Key `STrack` Fields
 
 - `is_activated`
-  track đã đủ điều kiện xuất ra ngoài
+  the track is stable enough to be emitted
 - `tracklet_len`
-  số frame liên tiếp track được update kể từ lần activate/re-activate gần nhất
+  number of consecutive frames the track has been updated since the last activate/re-activate
 - `frame_id`
-  frame cuối cùng track được nhìn thấy hoặc dự đoán tới
+  the last frame in which the track was seen or predicted
 - `start_frame`
-  frame track được sinh ra
+  the frame where the track was created
 - `track_id`
-  ID ổn định dùng để vẽ lên video output
+  the stable ID used for drawing on output video
 
-## 8. `track/main.cpp` ghép detector với tracker thế nào
+## 8. How `track/main.cpp` Connects Detector and Tracker
 
-1. chạy `YoloDetector::inference(img)`
-2. lọc class theo `trackClasses`
-3. đổi bbox `xyxy` sang `tlwh`
-4. tạo `Object`
-5. gọi `tracker.update(objects)`
-6. draw `track_id` và bbox sau tracking
+1. run `YoloDetector::inference(img)`
+2. filter classes using `trackClasses`
+3. convert bbox from `xyxy` to `tlwh`
+4. create `Object`
+5. call `tracker.update(objects)`
+6. draw `track_id` and the tracked bbox
 
-Điểm quan trọng:
+Important points:
 
-- tracker tiêu thụ detection đã scale về ảnh gốc
-- tracker không biết gì về TensorRT, CUDA hay head YOLO
-- coupling giữa detector và tracker chỉ là `bbox + score + label`
+- the tracker consumes detections already scaled to the original image
+- the tracker knows nothing about TensorRT, CUDA, or the YOLO head layout
+- the only coupling between detector and tracker is `bbox + score + label`

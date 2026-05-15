@@ -7,8 +7,8 @@
 
 using namespace nvinfer1;
 
-// TensorRT chỉ đi vào code path này khi bINT8Mode=true.
-// Lớp này nạp từng batch ảnh calibration, preprocess trên CPU rồi đẩy sang device.
+// TensorRT only enters this code path when bINT8Mode=true.
+// This class loads calibration images batch by batch, preprocesses on the CPU, then uploads to device.
 class Int8EntropyCalibrator2 : public IInt8EntropyCalibrator2
 {
 public:

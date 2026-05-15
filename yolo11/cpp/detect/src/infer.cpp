@@ -11,8 +11,8 @@
 
 using namespace nvinfer1;
 
-// File này giữ "xương sống" TensorRT của task detect:
-// quản lý engine/context/buffer, thực hiện enqueue và nối các kernel CUDA hậu xử lý.
+// This file contains the TensorRT backbone of the detect task:
+// it manages engine/context/buffers, launches enqueue, and chains the CUDA postprocess kernels.
 
 YoloDetector::YoloDetector(
         const std::string trtFile,
@@ -29,13 +29,13 @@ YoloDetector::YoloDetector(
 
     CHECK(cudaStreamCreate(&stream));
 
-    // Ưu tiên nạp engine serialize để khởi động nhanh; nếu chưa có sẽ build từ ONNX.
+    // Prefer loading a serialized engine for faster startup; if it does not exist, build from ONNX.
     get_engine();
 
     context = engine->createExecutionContext();
 
 #if NV_TENSORRT_MAJOR >= 10
-    // TRT10 truy cập I/O qua tensor name.
+    // TRT10 accesses I/O via tensor names.
     inputIndex_ = 0;
     outputIndex_ = 1;
     for (int i = 0; i < engine->getNbIOTensors(); i++) {
@@ -49,10 +49,10 @@ YoloDetector::YoloDetector(
 
     context->setInputShape(inputName_.c_str(), Dims {4, {1, 3, kInputH, kInputW}});
 
-    // Head detect YOLO11 xuất [1, 4 + num_class, 8400].
+    // The YOLO11 detect head outputs [1, 4 + num_class, 8400].
     Dims outDims = context->getTensorShape(outputName_.c_str());
 #else
-    // TRT8/9 vẫn dùng binding index và binding dimensions.
+    // TRT8/9 still use binding indices and binding dimensions.
     inputIndex_ = 0;
     outputIndex_ = 1;
     for (int i = 0; i < engine->getNbBindings(); i++) {
@@ -72,10 +72,10 @@ YoloDetector::YoloDetector(
         outputSize *= outDims.d[i];
     }
 
-    // outputData chỉ giữ kết quả đã decode + NMS, không phải raw head output.
+    // outputData only stores decoded + NMS results, not raw head output.
     outputData = new float[1 + kMaxNumOutputBbox * kNumBoxElement];
 
-    // vBufferD chứa đúng các binding TensorRT; các buffer còn lại là scratch buffer cho hậu xử lý GPU.
+    // vBufferD contains the actual TensorRT bindings; the remaining buffers are scratch buffers for GPU postprocess.
     vBufferD.resize(2, nullptr);
     CHECK(cudaMalloc(&vBufferD[inputIndex_], 3 * kInputH * kInputW * sizeof(float)));
     CHECK(cudaMalloc(&vBufferD[outputIndex_], outputSize * sizeof(float)));
@@ -86,7 +86,7 @@ YoloDetector::YoloDetector(
 
 void YoloDetector::get_engine(){
     if (access(trtFile_.c_str(), F_OK) == 0){
-        // Nhánh nhanh: đọc plan có sẵn rồi deserialize.
+        // Fast path: read an existing plan and deserialize it.
         std::ifstream engineFile(trtFile_, std::ios::binary);
         long int fsize = 0;
 
@@ -103,7 +103,7 @@ void YoloDetector::get_engine(){
         if (engine == nullptr) { std::cout << "Failed loading engine!" << std::endl; return; }
         std::cout << "Succeeded loading engine!" << std::endl;
     } else {
-        // Nhánh build: ONNX -> network -> optimization profile -> serialized engine -> runtime engine.
+        // Build path: ONNX -> network -> optimization profile -> serialized engine -> runtime engine.
         IBuilder *            builder     = createInferBuilder(gLogger);
         INetworkDefinition *  network     = builder->createNetworkV2(
 #if NV_TENSORRT_MAJOR >= 10
@@ -125,7 +125,7 @@ void YoloDetector::get_engine(){
         }
         if (bINT8Mode){
             config->setFlag(BuilderFlag::kINT8);
-            // INT8 calibration chỉ xuất hiện ở lúc build, không liên quan inference runtime.
+            // INT8 calibration only happens during build and is unrelated to inference runtime.
             int batchSize = 8;
             pCalibrator = new Int8EntropyCalibrator2(batchSize, kInputW, kInputH, calibrationDataPath.c_str(), cacheFile.c_str());
             config->setInt8Calibrator(pCalibrator);
@@ -142,7 +142,7 @@ void YoloDetector::get_engine(){
         }
         std::cout << std::string("Succeeded parsing .onnx file!") << std::endl;
 
-        // Repo cố định profile ở đúng 1x3x640x640 nên sample này là static-shape.
+        // The repo fixes the profile to 1x3x640x640, so this sample uses a static shape.
         ITensor* inputTensor = network->getInput(0);
         profile->setDimensions(inputTensor->getName(), OptProfileSelector::kMIN, Dims {4, {1, 3, kInputH, kInputW}});
         profile->setDimensions(inputTensor->getName(), OptProfileSelector::kOPT, Dims {4, {1, 3, kInputH, kInputW}});
@@ -161,7 +161,7 @@ void YoloDetector::get_engine(){
             delete pCalibrator;
         }
 
-        // Serialize ra .plan để lần chạy sau bỏ qua parse/build ONNX.
+        // Serialize to .plan so later runs can skip ONNX parse/build.
         std::ofstream engineFile(trtFile_, std::ios::binary);
         engineFile.write(static_cast<char *>(engineString->data()), engineString->size());
         std::cout << "Succeeded saving .plan file!" << std::endl;
@@ -175,7 +175,7 @@ void YoloDetector::get_engine(){
 }
 
 YoloDetector::~YoloDetector(){
-    // Giải phóng theo chiều ngược vòng đời: stream/buffer trước, TensorRT objects sau.
+    // Release resources in reverse lifetime order: stream/buffers first, then TensorRT objects.
     cudaStreamDestroy(stream);
 
     for (int i = 0; i < 2; ++i)
@@ -196,10 +196,10 @@ YoloDetector::~YoloDetector(){
 std::vector<Detection> YoloDetector::inference(cv::Mat& img){
     if (img.empty()) return {};
 
-    // preprocess CUDA ghi thẳng tensor NCHW float vào input buffer của TensorRT.
+    // CUDA preprocess writes the NCHW float tensor directly into TensorRT's input buffer.
     preprocess(img, (float*)vBufferD[inputIndex_], kInputH, kInputW, stream);
 
-    // enqueue không đồng bộ trên cùng stream với preprocess/postprocess để tránh sync thừa.
+    // Enqueue runs asynchronously on the same stream as preprocess/postprocess to avoid unnecessary synchronization.
 #if NV_TENSORRT_MAJOR >= 10
     context->setTensorAddress(inputName_.c_str(), vBufferD[inputIndex_]);
     context->setTensorAddress(outputName_.c_str(), vBufferD[outputIndex_]);
@@ -208,13 +208,13 @@ std::vector<Detection> YoloDetector::inference(cv::Mat& img){
     context->enqueueV2(vBufferD.data(), stream, nullptr);
 #endif
 
-    // Tensor head xuất theo [C, N]. Các kernel decode/NMS thuận tiện hơn khi mỗi candidate
-    // là một dải liên tiếp [cx, cy, w, h, cls...], nên cần transpose về [N, C].
+    // The tensor head is emitted as [C, N]. The decode/NMS kernels are easier to write when each candidate
+    // is a contiguous slice [cx, cy, w, h, cls...], so it must be transposed to [N, C].
     transpose((float*)vBufferD[outputIndex_], transposeDevice, OUTPUT_CANDIDATES, numClass_ + 4, stream);
-    // decode gom class tốt nhất cho từng candidate, đổi bbox center-size thành xyxy và ghi
-    // số lượng box hợp lệ vào phần tử đầu tiên bằng atomicAdd.
+    // decode picks the best class for each candidate, converts bbox center-size to xyxy, and writes
+    // the valid box count into the first element via atomicAdd.
     decode(transposeDevice, decodeDevice, OUTPUT_CANDIDATES, numClass_, confThresh_, kMaxNumOutputBbox, kNumBoxElement, stream);
-    // NMS trên GPU chỉ gạt keep_flag, nhờ đó host chỉ cần copy một buffer gọn đã hậu xử lý.
+    // GPU NMS only toggles keep_flag, so the host only needs to copy one compact postprocessed buffer.
     nms(decodeDevice, nmsThresh_, kMaxNumOutputBbox, kNumBoxElement, stream);
 
     CHECK(cudaMemcpyAsync(outputData, decodeDevice, (1 + kMaxNumOutputBbox * kNumBoxElement) * sizeof(float), cudaMemcpyDeviceToHost, stream));
@@ -234,7 +234,7 @@ std::vector<Detection> YoloDetector::inference(cv::Mat& img){
         }
     }
 
-    // scale_bbox đảo ngược letterbox để bbox khớp hệ tọa độ ảnh đầu vào.
+    // scale_bbox inverts letterboxing so boxes match the input image coordinate system.
     for (size_t j = 0; j < vDetections.size(); j++){
         scale_bbox(img, vDetections[j].bbox);
     }
@@ -247,7 +247,7 @@ double YoloDetector::inference_model_only(cv::Mat& img){
 
     preprocess(img, (float*)vBufferD[inputIndex_], kInputH, kInputW, stream);
 
-    // Dùng CUDA event trên cùng stream để chỉ đo thời gian enqueue + kernel nội bộ TensorRT.
+    // Use CUDA events on the same stream to measure only enqueue time plus TensorRT's internal kernels.
     cudaEvent_t start;
     cudaEvent_t stop;
     CHECK(cudaEventCreate(&start));
@@ -273,7 +273,7 @@ double YoloDetector::inference_model_only(cv::Mat& img){
 }
 
 void YoloDetector::draw_image(cv::Mat& img, std::vector<Detection>& inferResult){
-    // Hàm vẽ chỉ dùng cho sample/demo; không ảnh hưởng logic suy luận.
+    // The drawing helper is only for sample/demo output; it does not affect inference logic.
     for (size_t j = 0; j < inferResult.size(); j++)
     {
         cv::Scalar bboxColor(get_random_int(), get_random_int(), get_random_int());

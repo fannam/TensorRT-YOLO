@@ -10,13 +10,13 @@
 #include "utils.h"
 #include "infer.h"
 
-// Binary mẫu cho bài toán detect:
-// CLI -> resolve ONNX/.plan -> warm-up TensorRT -> benchmark model-only và full pipeline
-// -> ghi ảnh đã vẽ bbox ra thư mục hiện tại.
+// Sample binary for the detect task:
+// CLI -> resolve ONNX/.plan -> warm up TensorRT -> benchmark model-only and full pipeline
+// -> write bbox-rendered images to the current directory.
 
 #ifdef ENABLE_ONNXRUNTIME
-// Preprocess CPU này cố ý mô phỏng đúng preprocess CUDA để benchmark ORT/TensorRT
-// chủ yếu khác nhau ở runtime engine chứ không phải ở khâu chuẩn hóa input.
+// This CPU preprocess intentionally mirrors the CUDA preprocess so ORT/TensorRT benchmarking
+// differs mainly in the runtime engine, not in input normalization.
 static void preprocess_cpu(const cv::Mat& img, float* data, int th, int tw) {
     float r = std::min((float)tw / img.cols, (float)th / img.rows);
     int nw = (int)(img.cols * r);
@@ -130,9 +130,9 @@ static int run_trt_benchmark(
 
     YoloDetector detector(trtPath, onnxPath, precision);
 
-    // Warm-up tách riêng hai kiểu đo để loại chi phí lần chạy đầu:
-    // - model_only: chỉ enqueue TensorRT
-    // - full: nhìn từ phía người dùng end-to-end
+    // Warm up the two timing modes separately to remove first-run cost:
+    // - model_only: TensorRT enqueue only
+    // - full: end-to-end from the user perspective
     cv::Mat dummy(kInputH, kInputW, CV_8UC3, cv::Scalar(114, 114, 114));
     for (int i = 0; i < 10; i++) {
         detector.inference_model_only(dummy);
@@ -148,7 +148,7 @@ static int run_trt_benchmark(
         double model_ms = detector.inference_model_only(img);
         model_times.push_back(model_ms);
 
-        // Full pipeline timing bao gồm preprocess, postprocess, copy host và scale bbox.
+        // Full-pipeline timing includes preprocess, postprocess, host copy, and bbox scaling.
         auto t0 = std::chrono::high_resolution_clock::now();
         auto res = detector.inference(img);
         auto t1 = std::chrono::high_resolution_clock::now();
@@ -161,7 +161,7 @@ static int run_trt_benchmark(
                   << " ms, full: " << full_ms << " ms\n";
 
         YoloDetector::draw_image(img, res);
-        // Prefix theo modelName để có thể chạy nhiều model chung một thư mục output.
+        // Prefix outputs with modelName so multiple models can share the same output directory.
         cv::imwrite(modelName + "_" + fn, img);
     }
     return 0;
@@ -241,11 +241,11 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Cho phép truyền "yolo11s" hoặc path ONNX đầy đủ. Điều này giữ CLI ngắn nhưng vẫn
-    // hỗ trợ benchmark model ở vị trí tùy ý.
+    // Allow either "yolo11s" or a full ONNX path. This keeps the CLI short while still
+    // supporting benchmarks for models stored in arbitrary locations.
     std::string onnxPath = resolve_onnx_path(options.modelArg);
     std::string modelName = basename_without_ext(onnxPath);
-    // Nếu không truyền .plan thì sample sẽ tự dùng ./<model>.plan cạnh binary/build dir.
+    // If no .plan is provided, the sample uses ./<model>_<precision>.plan next to the binary/build dir.
     std::string trtPath = options.planFile.empty() ? default_plan_path(modelName, options.precision) : options.planFile;
     std::vector<double> trt_model_times, trt_full_times;
 #ifdef ENABLE_ONNXRUNTIME

@@ -4,9 +4,9 @@
 #include <string>
 #include "config.h"
 
-// Detection của pose mang cả bbox lẫn keypoint:
-// - kpts: dữ liệu thô còn ở hệ toạ độ input 640x640
-// - vKpts: dữ liệu đã scale về ảnh gốc để draw/tracking tiếp theo dùng ngay
+// Pose detection carries both bbox and keypoint data:
+// - kpts: raw data still in 640x640 input coordinates
+// - vKpts: data already scaled back to the original image for immediate drawing/tracking use
 struct Detection
 {
     float bbox[4];

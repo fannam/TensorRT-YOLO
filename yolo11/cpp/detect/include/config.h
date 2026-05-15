@@ -4,9 +4,9 @@
 #include <string>
 #include <vector>
 
-// Cấu hình compile-time cho binary detect.
-// Các hằng số này đồng thời chi phối shape TensorRT, preprocess CUDA và bước scale
-// output về ảnh gốc, nên phải được hiểu như "hợp đồng chung" của cả pipeline.
+// Compile-time configuration for the detect binary.
+// These constants jointly define TensorRT shape, CUDA preprocess, and the scaling step
+// back to the original image, so they should be treated as the shared contract of the pipeline.
 const int kGpuId = 0;
 const int kNumClass = 80;
 const int kInputH = 640;
@@ -14,19 +14,19 @@ const int kInputW = 640;
 const float kNmsThresh = 0.45f;
 const float kConfThresh = 0.25f;
 
-// Buffer decode trên GPU/CPU được cấp phát cố định cho tối đa 1000 box hợp lệ.
-// Nếu cần nhiều hơn, phải sửa đồng bộ layout decode/NMS và host buffer.
+// GPU/CPU decode buffers are fixed-size for up to 1000 valid boxes.
+// If you need more, update the decode/NMS layout and host buffer together.
 const int kMaxNumOutputBbox = 1000;
-// Mỗi box sau decode chiếm 7 float: [x1, y1, x2, y2, conf, class_id, keep_flag].
+// Each decoded box uses 7 floats: [x1, y1, x2, y2, conf, class_id, keep_flag].
 const int kNumBoxElement = 7;
 
-// INT8 vẫn giữ compile-time vì pipeline calibration chưa được expose qua CLI.
+// INT8 remains compile-time only because the calibration pipeline is not exposed through the CLI.
 const bool bINT8Mode = false;
 const std::string cacheFile = "./int8.cache";
-// Thư mục ảnh calibration chỉ được dùng khi bINT8Mode=true.
+// The calibration image directory is only used when bINT8Mode=true.
 const std::string calibrationDataPath = "../calibrator";
 
-// Bản đồ class COCO để bước vẽ và log có thể chuyển class_id sang tên có nghĩa.
+// COCO class names let drawing and logging map class_id to readable labels.
 const std::vector<std::string> vClassNames {
     "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light", "fire hydrant",
     "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe",

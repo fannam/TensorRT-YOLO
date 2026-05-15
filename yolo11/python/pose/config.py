@@ -20,11 +20,11 @@ use_fp16_mode = False
 use_int8_mode = False
 n_calibration = 20
 cache_file = str(TASK_DIR / "int8.cache")
-calibration_data_dir = str(TASK_DIR / "calibrator")  # 存放用于 int8 量化校准的图像
+calibration_data_dir = str(TASK_DIR / "calibrator")  # Directory containing images used for INT8 calibration
 
 class_name_list = ["person"]
 
-# 人体关键点检测时，关键点间骨骼连接信息
+# Skeleton connectivity used for human pose keypoint detection
 skeleton = [
     [16, 14],
     [14, 12],

@@ -6,16 +6,16 @@
 #include <Eigen/Core>
 #include <Eigen/Dense>
 
-// Các alias Eigen ở đây làm rõ "ngôn ngữ hình học" mà ByteTrack dùng.
-// DETECTBOX biểu diễn measurement 4 chiều [x, y, a, h] trong hệ toạ độ Kalman.
+// These Eigen aliases clarify the geometric language used by ByteTrack.
+// DETECTBOX represents the 4D measurement [x, y, a, h] in Kalman coordinates.
 typedef Eigen::Matrix<float, 1, 4, Eigen::RowMajor> DETECTBOX;
 typedef Eigen::Matrix<float, -1, 4, Eigen::RowMajor> DETECTBOXSS;
 typedef Eigen::Matrix<float, 1, 128, Eigen::RowMajor> FEATURE;
 typedef Eigen::Matrix<float, Eigen::Dynamic, 128, Eigen::RowMajor> FEATURESS;
 
 // Kalman state:
-// mean 8 chiều = [x, y, a, h, vx, vy, va, vh]
-// covariance 8x8 đi kèm với mean.
+// 8D mean = [x, y, a, h, vx, vy, va, vh]
+// paired 8x8 covariance for the mean.
 typedef Eigen::Matrix<float, 1, 8, Eigen::RowMajor> KAL_MEAN;
 typedef Eigen::Matrix<float, 8, 8, Eigen::RowMajor> KAL_COVA;
 typedef Eigen::Matrix<float, 1, 4, Eigen::RowMajor> KAL_HMEAN;
@@ -32,5 +32,5 @@ typedef struct t {
     std::vector<int> unmatched_detections;
 }TRACHER_MATCHD;
 
-// Ma trận chi phí động cho assignment/Hungarian.
+// Dynamic cost matrix for assignment/Hungarian matching.
 typedef Eigen::Matrix<float, -1, -1, Eigen::RowMajor> DYNAMICM;

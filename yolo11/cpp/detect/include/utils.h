@@ -5,7 +5,7 @@
 #include <random>
 #include <opencv2/opencv.hpp>
 
-// Helper tối giản cho sample CLI: liệt kê tên file trong một thư mục.
+// Minimal helper for the sample CLI: list file names in a directory.
 static inline int read_files_in_dir(const char* p_dir_name, std::vector<std::string>& file_names)
 {
     DIR *p_dir = opendir(p_dir_name);
@@ -26,7 +26,7 @@ static inline int read_files_in_dir(const char* p_dir_name, std::vector<std::str
     return 0;
 }
 
-// Sinh màu ngẫu nhiên cho bước vẽ output; không tham gia logic suy luận.
+// Generates random colors for output rendering; not part of inference logic.
 static inline int get_random_int(int minThres=0, int maxThres=255){
     std::random_device rd;
     std::mt19937 gen(rd());

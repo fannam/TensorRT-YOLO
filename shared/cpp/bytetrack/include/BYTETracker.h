@@ -2,8 +2,8 @@
 
 #include "STrack.h"
 
-// Object là "ngôn ngữ chung" giữa detector và ByteTrack:
-// detector chỉ cần đưa bbox tlwh, class label và score vào tracker.
+// Object is the shared language between the detector and ByteTrack:
+// the detector only needs to pass tlwh bbox, class label, and score into the tracker.
 struct Object
 {
     cv::Rect_<float> rect;
@@ -11,18 +11,18 @@ struct Object
     float prob;
 };
 
-// BYTETracker giữ ba pool track chính:
-// - tracked_stracks: đang hoạt động
-// - lost_stracks: tạm mất nhưng còn cơ hội hồi sinh
-// - removed_stracks: quá hạn hoặc bị loại hẳn
+// BYTETracker keeps three main track pools:
+// - tracked_stracks: currently active
+// - lost_stracks: temporarily missing but still recoverable
+// - removed_stracks: expired or permanently removed
 class BYTETracker
 {
 public:
     BYTETracker(int frame_rate = 30, int track_buffer = 30);
     ~BYTETracker();
 
-    // update() nhận detection của một frame và trả về các track còn active sau khi:
-    // tách high/low score, ghép IoU hai lượt, xử lý unconfirmed và loại track quá hạn.
+    // update() receives one frame's detections and returns the tracks still active after:
+    // splitting high/low scores, running two IoU association passes, handling unconfirmed tracks, and dropping expired tracks.
     vector<STrack> update(const vector<Object>& objects);
     Scalar get_color(int idx);
 
@@ -43,9 +43,9 @@ private:
         bool extend_cost = false, float cost_limit = LONG_MAX, bool return_cost = true);
 
 private:
-    // Các ngưỡng chính của ByteTrack:
-    // track_thresh tách high/low score, high_thresh quyết định khởi tạo track mới,
-    // match_thresh là ngưỡng cost tối đa ở lượt ghép đầu.
+    // Main ByteTrack thresholds:
+    // track_thresh splits high/low scores, high_thresh decides whether to start a new track,
+    // and match_thresh is the maximum cost allowed in the first association pass.
     float track_thresh;
     float high_thresh;
     float match_thresh;

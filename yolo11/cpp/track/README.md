@@ -2,16 +2,16 @@
 
 ![street](../../../assets/result.gif)
 
-## 运行
+## Run
 
-1. 先在 [../detect/README.md](../detect/README.md) 完成检测模型转换，确保 `yolo11/cpp/detect/build/yolo11s.plan` 已生成。
-2. 安装额外依赖：
+1. Finish detector conversion in [../detect/README-en.md](../detect/README-en.md) so `yolo11/cpp/detect/build/yolo11s.plan` exists.
+2. Install the extra dependency:
 
 ```bash
 apt install libeigen3-dev
 ```
 
-3. 在当前目录编译并运行：
+3. Build and run from this directory:
 
 ```bash
 mkdir -p build
@@ -21,5 +21,5 @@ make
 ./trt_yolo11_track_cli ../../assets/street.mp4
 ```
 
-- 检测引擎默认从同一 model family 下的 `../detect/build/yolo11s.plan` 自动解析
-- 输出视频写入 `../output/result.mp4`
+- The detector engine is resolved automatically from the sibling `detect` task
+- The output video is written to `../output/result.mp4`

@@ -2,21 +2,21 @@
 
 ![street](../../../assets/result.gif)
 
-## 运行
+## Run
 
-1. 先在 [../detect/README.md](../detect/README.md) 完成检测模型转换，确保 `yolo11/python/detect/model.plan` 已生成。
-2. 在同一 Python 环境中安装额外依赖：
+1. Finish the detector conversion in [../detect/README-en.md](../detect/README-en.md) so `yolo11/python/detect/model.plan` exists.
+2. Install the tracking extras in the same Python environment:
 
 ```bash
 pip install lap
 pip install cython_bbox
 ```
 
-3. 在当前目录执行：
+3. Run tracking from this directory:
 
 ```bash
 python main.py --video ../../assets/street.mp4
 ```
 
-- 默认检测引擎路径为 `../detect/model.plan`
-- 输出视频默认写入 `./output/result.mp4`
+- The default detector engine is `../detect/model.plan`
+- The output video is written to `./output/result.mp4`

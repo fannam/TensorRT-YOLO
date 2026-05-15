@@ -4,8 +4,8 @@
 #include <string>
 #include <vector>
 
-// Segment dùng cùng head detect cho bbox/class nhưng bổ sung 32 hệ số mask coefficient
-// và một tensor proto riêng để tái tạo mask nhị phân cho từng detection.
+// Segment uses the same detect head for bbox/class output but adds 32 mask coefficients
+// and a separate proto tensor to reconstruct a binary mask for each detection.
 const int kGpuId = 0;
 const int kNumClass = 80;
 const int kInputH = 640;
@@ -13,10 +13,10 @@ const int kInputW = 640;
 const float kNmsThresh = 0.45f;
 const float kConfThresh = 0.25f;
 const int kMaxNumOutputBbox = 1000;
-// 7 phần tử detect cơ bản + 32 hệ số mask coefficient.
+// 7 base detect elements + 32 mask coefficients.
 const int kNumBoxElement = 7 + 32;
 
-// INT8 vẫn giữ compile-time vì pipeline calibration chưa được expose qua CLI.
+// INT8 remains compile-time only because the calibration pipeline is not exposed through the CLI.
 const bool bINT8Mode = false;
 const std::string cacheFile = "./int8.cache";
 const std::string calibrationDataPath = "../calibrator";

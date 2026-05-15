@@ -1,9 +1,9 @@
 # YOLO26 Docs
 
-`yolo26/` hiện là scaffold theo cùng layout với `yolo11/`.
+`yolo26/` is currently a scaffold that mirrors the `yolo11/` layout.
 
 - `cpp/detect`, `cpp/pose`, `cpp/segment`, `cpp/track`
 - `python/detect`, `python/pose`, `python/segment`, `python/track`
 - `assets/`
 
-Các thư mục artifact (`images`, `output`, `onnx_model`, `build`, `calibrator`, `videos`) đã được dựng sẵn để đổ implementation vào ở lượt tiếp theo.
+Artifact directories (`images`, `output`, `onnx_model`, `build`, `calibrator`, `videos`) are already in place for the next implementation pass.

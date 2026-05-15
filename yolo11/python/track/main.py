@@ -12,7 +12,7 @@ import numpy as np
 if __package__ in {None, ""}:
     sys.path.append(str(Path(__file__).resolve().parents[3]))
 
-# 需要跟踪的类别，可以根据自己需求调整，筛选自己想要跟踪的对象的种类（以下对应COCO数据集类别索引）
+# Classes to track. Adjust this list to keep only the object categories you care about (indices follow the COCO dataset).
 track_classes = [0, 1, 2, 3, 5, 7]  # person, bicycle, car, motorcycle, bus, truck
 
 
@@ -94,7 +94,7 @@ def main(args):
         # YOLOv8 inference
         detect_res = yolo_infer.inference(frame)
 
-        # 筛选出想要跟踪的类别
+        # Filter out the categories that should be tracked
         classes = (detect_res[:, 5]).astype(np.int32)
         valid = np.isin(classes, track_classes)
         track_input = detect_res[valid]

@@ -19,7 +19,7 @@ use_fp16_mode = False
 use_int8_mode = False
 n_calibration = 20
 cache_file = str(TASK_DIR / "int8.cache")
-calibration_data_dir = str(TASK_DIR / "calibrator")  # 存放用于 int8 量化校准的图像
+calibration_data_dir = str(TASK_DIR / "calibrator")  # Directory containing images used for INT8 calibration
 
 class_name_list = [
     "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light",

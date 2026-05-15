@@ -30,7 +30,7 @@ static inline int read_files_in_dir(const char* p_dir_name, std::vector<std::str
 
 
 static inline int get_random_int(int minThres=0, int maxThres=255){
-    // 获取处于某一范围内的一个随机整数
+    // Return a random integer within a given range
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_int_distribution<> distrib(minThres, maxThres);

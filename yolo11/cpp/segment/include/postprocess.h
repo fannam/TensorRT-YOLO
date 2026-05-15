@@ -8,17 +8,17 @@
 
 void transpose(float* src, float* dst, int numBboxes, int numElements, cudaStream_t stream);
 
-// Decode bbox/class đồng thời giữ lại 32 hệ số mask coefficient cho từng candidate.
+// Decode bbox/class while preserving the 32 mask coefficients for each candidate.
 void decode(float* src, float* dst, int numBboxes, int numClasses, int numMasks, float confThresh, int maxObjects, int numBoxElement, cudaStream_t stream);
 
 void nms(float* data, float kNmsThresh, int maxObjects, int numBoxElement, cudaStream_t stream);
 
-// Nhân ma trận [n, 32] với proto [32, H*W] để tái tạo mask [n, H*W].
+// Multiply the [n, 32] matrix by the proto tensor [32, H*W] to reconstruct masks as [n, H*W].
 void matrix_multiply(float* aMatrix, int aRows, int aCols, float* bMatrix, int bRows, int bCols, float* cMatrix, cudaStream_t stream, bool sigm = false);
 
 void downsample_bbox(float* bboxDevice, int length, float heightRatio, float widthRatio, cudaStream_t stream);
 
-// Xoá phần mask nằm ngoài bbox tương ứng để giảm nhiễu trước khi resize về ảnh gốc.
+// Remove mask regions outside the corresponding bbox to reduce noise before resizing back to the original image.
 void crop_mask(float* masksDevice, int maskNum, int maskHeight, int maskWidth, float* bboxesDevice, cudaStream_t stream);
 
 void cut_mask(

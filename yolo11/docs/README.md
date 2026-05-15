@@ -1,15 +1,12 @@
 # YOLO11 Docs
 
-`yolo11/` là model family đã có implementation đầy đủ trong repo hiện tại.
+`yolo11/` is the fully implemented model family in the current repository.
 
-- `cpp/detect`, `cpp/pose`, `cpp/segment`, `cpp/track`: runtime cpp theo layout mới
-- `python/detect`, `python/pose`, `python/segment`, `python/track`: runtime Python theo layout mới
-- `assets/`: media và input dùng riêng cho YOLO11
+- `cpp/detect`, `cpp/pose`, `cpp/segment`, `cpp/track`: cpp runtime tasks
+- `python/detect`, `python/pose`, `python/segment`, `python/track`: Python runtime tasks
+- `assets/`: YOLO11-specific media and sample inputs
 
-Điểm đáng chú ý:
+Notes:
 
-- Tracking dùng detector từ cùng model family, không còn phụ thuộc path ở root layout cũ
-- ByteTrack đã được tách sang `shared/cpp/bytetrack` và `shared/python/tracker`
-- Tài liệu giải thích C++ cho `YOLO11 + shared`:
-  - `YOLO11_CPP_OVERVIEW.md`: bản đồ module, luồng dữ liệu, tensor shape, memory map
-  - `YOLO11_CPP_BYTETRACK.md`: state machine ByteTrack, Kalman, IoU, assignment flow
+- Tracking resolves its detector from the same model family instead of the old root-level layout
+- ByteTrack now lives under `shared/cpp/bytetrack` and `shared/python/tracker`

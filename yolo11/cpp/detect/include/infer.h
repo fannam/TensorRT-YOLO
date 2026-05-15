@@ -21,13 +21,13 @@ inline const char* precision_to_cli_name(Precision precision) {
     return precision == Precision::kFP16 ? "fp16" : "fp32";
 }
 
-// YoloDetector gom toàn bộ tài nguyên sống xuyên suốt nhiều lần inference:
-// engine/runtime/context của TensorRT, stream CUDA, buffer device/host và metadata binding.
+// YoloDetector owns all resources that live across repeated inference calls:
+// TensorRT engine/runtime/context, CUDA stream, device/host buffers, and binding metadata.
 class YoloDetector
 {
 public:
-    // trtFile: đường dẫn .plan đã serialize hoặc nơi sẽ được ghi sau khi build.
-    // onnxFile: nguồn chân lý để build engine khi chưa có .plan.
+    // trtFile: path to an existing serialized .plan, or the output location after build.
+    // onnxFile: source of truth for engine build when no .plan exists.
     YoloDetector(
         const std::string trtFile,
         const std::string onnxFile,
@@ -39,14 +39,14 @@ public:
     );
     ~YoloDetector();
 
-    // Trả về detection đã scale theo ảnh gốc.
+    // Returns detections already scaled to the original image.
     std::vector<Detection> inference(cv::Mat& img);
-    // Chỉ đo thời gian enqueue TensorRT bằng CUDA event.
+    // Measures TensorRT enqueue time only via CUDA events.
     double inference_model_only(cv::Mat& img);
     static void draw_image(cv::Mat& img, std::vector<Detection>& inferResult);
 
 private:
-    // Tải engine từ .plan nếu có, ngược lại build từ ONNX rồi serialize ra đĩa.
+    // Loads an engine from .plan if available, otherwise builds from ONNX and serializes it.
     void get_engine();
 
 private:
@@ -70,10 +70,10 @@ private:
     float *             transposeDevice;
     float *             decodeDevice;
 
-    // Số candidate head sinh ra, thường là 8400 cho input 640.
+    // Number of head candidates, typically 8400 for 640 input.
     int                 OUTPUT_CANDIDATES;
 
-    // Repo giữ cả index lẫn tên tensor vì TRT8 dùng binding index còn TRT10 ưu tiên tensor name.
+    // The repo keeps both indices and tensor names because TRT8 uses binding indices while TRT10 prefers tensor names.
     int                 inputIndex_;
     int                 outputIndex_;
     std::string         inputName_;

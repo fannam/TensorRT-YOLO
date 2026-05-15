@@ -1,14 +1,14 @@
 #include "postprocess.h"
 
-// File này cài đặt phần hậu xử lý trên GPU cho detect:
-// transpose layout, decode class/bbox và non-maximum suppression.
+// This file implements GPU postprocess for detect:
+// layout transpose, class/bbox decode, and non-maximum suppression.
 
 // ------------------ transpose --------------------
 __global__ void transpose_kernel(float* src, float* dst, int numBboxes, int numElements, int edge){
     int position = blockDim.x * blockIdx.x + threadIdx.x;
     if (position >= edge) return;
 
-    // src đang là [numElements, numBboxes]; dst chuyển thành [numBboxes, numElements].
+    // src is [numElements, numBboxes]; dst becomes [numBboxes, numElements].
     dst[position] = src[(position % numElements) * numBboxes + position / numElements];
 }
 
@@ -24,7 +24,7 @@ __global__ void decode_kernel(float* src, float* dst, int numBboxes, int numClas
     int position = blockDim.x * blockIdx.x + threadIdx.x;
     if (position >= numBboxes) return;
 
-    // Sau transpose, mỗi candidate là [cx, cy, w, h, cls0, cls1, ...].
+    // After transpose, each candidate is [cx, cy, w, h, cls0, cls1, ...].
     float* pitem = src + (4 + numClasses) * position;
     float* classConf = pitem + 4;
     float confidence = 0;
@@ -38,7 +38,7 @@ __global__ void decode_kernel(float* src, float* dst, int numBboxes, int numClas
 
     if (confidence < confThresh) return;
 
-    // dst[0] giữ số box hợp lệ. atomicAdd cho phép nhiều thread cùng append box.
+    // dst[0] stores the valid box count. atomicAdd allows multiple threads to append boxes concurrently.
     int index = (int)atomicAdd(dst, 1);
     if (index >= maxObjects) return;
 
@@ -59,12 +59,12 @@ __global__ void decode_kernel(float* src, float* dst, int numBboxes, int numClas
     pout_item[3] = bottom;
     pout_item[4] = confidence;
     pout_item[5] = label;
-    // keep_flag sẽ bị NMS sửa thành 0 nếu box bị áp chế.
+    // keep_flag is set to 0 by NMS if the box is suppressed.
     pout_item[6] = 1;
 }
 
 void decode(float* src, float* dst, int numBboxes, int numClasses, float confThresh, int maxObjects, int numBoxElement, cudaStream_t stream){
-    // Chỉ cần reset phần tử đếm đầu tiên; các vùng box phía sau sẽ bị ghi đè khi box hợp lệ xuất hiện.
+    // Only the first counter element needs to be reset; later box slots will be overwritten as valid boxes appear.
     cudaMemsetAsync(dst, 0, sizeof(int), stream);
     int blockSize = 256;
     int gridSize = (numBboxes + blockSize - 1) / blockSize;
@@ -94,14 +94,14 @@ __global__ void nms_kernel(float* data, float kNmsThresh, int maxObjects, int nu
     int count = min((int)data[0], maxObjects);
     if (position >= count) return;
 
-    // Layout mỗi box: [x1, y1, x2, y2, conf, class_id, keep_flag].
+    // Layout of each box: [x1, y1, x2, y2, conf, class_id, keep_flag].
     float* pcurrent = data + 1 + position * numBoxElement;
     float* pitem;
     for (int i = 0; i < count; i++){
         pitem = data + 1 + i * numBoxElement;
         if (i == position || pcurrent[5] != pitem[5]) continue;
 
-        // Quy tắc tie-break: box score cao hơn giữ lại; nếu bằng điểm thì ưu tiên box đứng trước.
+        // Tie-break rule: keep the higher-score box; if scores match, prefer the earlier box.
         if (pitem[4] >= pcurrent[4]){
             if (pitem[4] == pcurrent[4] && i < position) continue;
 
@@ -119,7 +119,7 @@ __global__ void nms_kernel(float* data, float kNmsThresh, int maxObjects, int nu
 }
 
 void nms(float* data, float kNmsThresh, int maxObjects, int numBoxElement, cudaStream_t stream){
-    // maxObjects thay vì count thực tế giúp grid shape cố định; kernel tự dừng khi position >= count.
+    // Using maxObjects instead of the real count keeps the grid shape fixed; the kernel exits once position >= count.
     int blockSize = maxObjects < 256?maxObjects:256;
     int gridSize = (maxObjects + blockSize - 1) / blockSize;
     nms_kernel<<<gridSize, blockSize, 0, stream>>>(data, kNmsThresh, maxObjects, numBoxElement);

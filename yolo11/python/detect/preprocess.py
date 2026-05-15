@@ -1,7 +1,7 @@
 # -*- coding:utf-8 -*-
 
 """
-    YOLO 图像预处理
+    YOLO image preprocessing
 """
 
 import cv2

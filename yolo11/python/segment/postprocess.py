@@ -1,7 +1,7 @@
 # -*- coding:utf-8 -*-
 
 """
-    YOLOv8 图像预处理
+    YOLOv8 image preprocessing
 """
 
 import numpy as np

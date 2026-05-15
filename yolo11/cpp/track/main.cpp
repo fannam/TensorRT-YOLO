@@ -4,10 +4,10 @@
 #include "infer.h"
 #include "BYTETracker.h"
 
-// Binary track ghép detector YOLO11 detect với shared ByteTrack:
-// video frame -> detect -> lọc class -> BYTETracker.update() -> draw track id -> ghi video output.
+// The track binary combines the YOLO11 detect detector with shared ByteTrack:
+// video frame -> detect -> class filter -> BYTETracker.update() -> draw track id -> write output video.
 
-// Chỉ track một tập con class COCO để demo dễ nhìn và giảm nhiễu ID switch cho object ít quan tâm.
+// Track only a subset of COCO classes so the demo is easier to read and produces fewer distracting ID switches.
 std::vector<int>  trackClasses {0, 1, 2, 3, 5, 7};  // person, bicycle, car, motorcycle, bus, truck
 
 bool isTrackingClass(int class_id){
@@ -34,13 +34,13 @@ int run(const std::filesystem::path& executablePath, char* videoPath){
 
     cv::VideoWriter writer(outputPath.string(), VideoWriter::fourcc('m', 'p', '4', 'v'), fps, Size(img_w, img_h));
 
-    // Tracker sample dùng detector detect thường, không dùng head tracking chuyên biệt.
-    // Detector để confThresh thấp hơn detect demo vì ByteTrack muốn tiêu thụ cả box score thấp.
+    // The tracker sample uses the normal detect detector, not a dedicated tracking head.
+    // The detector uses a lower confThresh than the detect demo because ByteTrack also benefits from low-score boxes.
     std::string trtFile = (exeDir / "../../detect/build/yolo11s.plan").lexically_normal().string();
     std::string onnxFile = (exeDir / "../../detect/onnx_model/yolo11s.onnx").lexically_normal().string();
     YoloDetector detector(trtFile, onnxFile, 0, 0.45, 0.01);
 
-    // ByteTrack dùng fps và track_buffer để quyết định một track được phép "mất tích" bao lâu.
+    // ByteTrack uses fps and track_buffer to decide how long a track may remain missing.
     BYTETracker tracker(fps, 30);
 
     cv::Mat img;
@@ -58,8 +58,8 @@ int run(const std::filesystem::path& executablePath, char* videoPath){
 
         std::vector<Detection> res = detector.inference(img);
 
-        // Chuyển output detector sang Object mà ByteTrack hiểu:
-        // rect tlwh + label + score. Đồng thời lọc class không muốn track.
+        // Convert detector output into the Object format expected by ByteTrack:
+        // rect tlwh + label + score, while also filtering out classes that should not be tracked.
         std::vector<Object> objects;
         for (size_t j = 0; j < res.size(); j++){
             float* bbox = res[j].bbox;
@@ -73,7 +73,7 @@ int run(const std::filesystem::path& executablePath, char* videoPath){
             }
         }
 
-        // update() thực hiện toàn bộ state machine Tracked/Lost/Removed và trả về track đang hoạt động.
+        // update() runs the full Tracked/Lost/Removed state machine and returns active tracks.
         std::vector<STrack> output_stracks = tracker.update(objects);
 
         auto end = std::chrono::system_clock::now();

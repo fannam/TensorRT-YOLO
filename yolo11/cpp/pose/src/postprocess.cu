@@ -1,7 +1,7 @@
 #include "postprocess.h"
 
-// Postprocess pose khác detect ở chỗ mỗi candidate còn mang thêm vector keypoint,
-// nhưng NMS vẫn chỉ dựa trên bbox/class/conf.
+// Pose postprocess differs from detect because each candidate also carries
+// a keypoint vector, while NMS still depends only on bbox/class/conf.
 
 // ------------------ transpose --------------------
 __global__ void transpose_kernel(float* src, float* dst, int numBboxes, int numElements, int edge){
@@ -57,7 +57,7 @@ __global__ void decode_kernel(float* src, float* dst, int numBboxes, int numClas
     pout_item[4] = confidence;
     pout_item[5] = label;
     pout_item[6] = 1;
-    // Copy nguyên khối 51 giá trị keypoint; bước scale/visibility xử lý ở host.
+    // Copy the full 51 keypoint values; scaling/visibility handling happens on the host.
     for (int j = 0; j < numKpts; j++){
         pout_item[7 + j] = pitem[4 + numClasses + j];
     }

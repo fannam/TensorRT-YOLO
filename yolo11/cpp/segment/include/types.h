@@ -4,9 +4,9 @@
 #include <string>
 #include <vector>
 
-// Dữ liệu segment sau decode:
-// - mask: 32 hệ số coefficient đi kèm mỗi detection
-// - maskMatrix: mask đã được ghép với proto, crop theo bbox và resize về ảnh gốc
+// Segment data after decode:
+// - mask: the 32 coefficients associated with each detection
+// - maskMatrix: the mask after proto reconstruction, bbox crop, and resize back to the original image
 struct Detection
 {
     float bbox[4];

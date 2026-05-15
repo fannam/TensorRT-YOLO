@@ -20,22 +20,22 @@ namespace byte_kalman
 		int ndim = 4;
 		double dt = 1.;
 
-		// State 8 chiều = [x, y, a, h, vx, vy, va, vh].
-		// _motion_mat cộng vận tốc vào 4 chiều vị trí mỗi bước dt=1 frame.
+		// 8D state = [x, y, a, h, vx, vy, va, vh].
+		// _motion_mat adds velocity into the 4 position dimensions for each dt=1 frame step.
 		_motion_mat = Eigen::MatrixXf::Identity(8, 8);
 		for (int i = 0; i < ndim; i++) {
 			_motion_mat(i, ndim + i) = dt;
 		}
 		_update_mat = Eigen::MatrixXf::Identity(4, 8);
 
-		// Nhiễu tỉ lệ theo chiều cao box: box càng lớn thì độ bất định vị trí/vận tốc càng lớn.
+		// Noise is scaled by box height: larger boxes carry greater position/velocity uncertainty.
 		this->_std_weight_position = 1. / 20;
 		this->_std_weight_velocity = 1. / 160;
 	}
 
 	KAL_DATA KalmanFilter::initiate(const DETECTBOX &measurement)
 	{
-		// Track mới bắt đầu với vận tốc = 0, chỉ tin vào measurement detector.
+		// A new track starts with velocity = 0 and only trusts the detector measurement.
 		DETECTBOX mean_pos = measurement;
 		DETECTBOX mean_vel;
 		for (int i = 0; i < 4; i++) mean_vel(i) = 0;
@@ -63,7 +63,7 @@ namespace byte_kalman
 
 	void KalmanFilter::predict(KAL_MEAN &mean, KAL_COVA &covariance)
 	{
-		// Predict đẩy state sang frame kế tiếp rồi cộng motion noise.
+		// Predict advances the state to the next frame and then adds motion noise.
 		DETECTBOX std_pos;
 		std_pos << _std_weight_position * mean(3),
 			_std_weight_position * mean(3),
@@ -89,7 +89,7 @@ namespace byte_kalman
 
 	KAL_HDATA KalmanFilter::project(const KAL_MEAN &mean, const KAL_COVA &covariance)
 	{
-		// Project chiếu state 8D xuống measurement space 4D để so sánh với detector.
+		// Project maps the 8D state into 4D measurement space for detector comparison.
 		DETECTBOX std;
 		std << _std_weight_position * mean(3), _std_weight_position * mean(3),
 			1e-1, _std_weight_position * mean(3);
@@ -108,8 +108,8 @@ namespace byte_kalman
 			const KAL_COVA &covariance,
 			const DETECTBOX &measurement)
 	{
-		// Update chuẩn Kalman: innovation = measurement - projected_mean,
-		// sau đó dùng Kalman gain để sửa mean/covariance.
+		// Standard Kalman update: innovation = measurement - projected_mean,
+		// then use the Kalman gain to correct mean/covariance.
 		KAL_HDATA pa = project(mean, covariance);
 		KAL_HMEAN projected_mean = pa.first;
 		KAL_HCOVA projected_cov = pa.second;
@@ -136,7 +136,7 @@ namespace byte_kalman
 			const std::vector<DETECTBOX> &measurements,
 			bool only_position)
 	{
-		// Mahalanobis distance dùng để loại measurement quá xa state dự đoán.
+		// Mahalanobis distance is used to reject measurements that are too far from the predicted state.
 		KAL_HDATA pa = this->project(mean, covariance);
 		if (only_position) {
 			printf("not implement!");

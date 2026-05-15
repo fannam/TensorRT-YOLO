@@ -11,8 +11,8 @@
 
 using namespace nvinfer1;
 
-// Pose giữ cùng bộ khung TensorRT như detect; khác biệt chính nằm ở shape output,
-// buffer decode lớn hơn và bước scale keypoint về ảnh gốc.
+// Pose keeps the same TensorRT skeleton as detect; the main difference is the output shape,
+// the larger decode buffer, and scaling keypoints back to the original image.
 
 YoloDetector::YoloDetector(
         const std::string trtFile,
@@ -190,7 +190,7 @@ std::vector<Detection> YoloDetector::inference(cv::Mat& img){
     context->enqueueV2(vBufferD.data(), stream, nullptr);
 #endif
 
-    // [56, 8400] -> [8400, 56] để một thread decode đọc đủ bbox + class + keypoint của 1 candidate.
+    // [56, 8400] -> [8400, 56] so one decode thread can read the full bbox + class + keypoints for one candidate.
     transpose((float*)vBufferD[outputIndex_], transposeDevice, OUTPUT_CANDIDATES, 4 + kNumClass + kNumKpt * kKptDims, stream);
     int nk = kNumKpt * kKptDims;
     decode(transposeDevice, decodeDevice, OUTPUT_CANDIDATES, kNumClass, nk, kConfThresh, kMaxNumOutputBbox, kNumBoxElement, stream);
@@ -209,7 +209,7 @@ std::vector<Detection> YoloDetector::inference(cv::Mat& img){
             memcpy(det.bbox, &outputData[pos], 4 * sizeof(float));
             det.conf = outputData[pos + 4];
             det.classId = (int)outputData[pos + 5];
-            // 51 giá trị keypoint được giữ nguyên thứ tự [x, y, conf] * 17.
+            // The 51 keypoint values keep their original order: [x, y, conf] * 17.
             memcpy(det.kpts, &outputData[pos + 7], kNumKpt * kKptDims * sizeof(float));
             vDetections.push_back(det);
         }

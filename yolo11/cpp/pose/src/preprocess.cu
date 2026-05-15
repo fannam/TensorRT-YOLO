@@ -1,6 +1,6 @@
 ﻿#include "preprocess.h"
 
-// Pose dùng cùng chiến lược preprocess với detect:
+// Pose uses the same preprocess strategy as detect:
 // letterbox + bilinear resize + BGR->RGB + HWC->CHW + normalize.
 
 
@@ -13,8 +13,8 @@ __global__ void letterbox(const uchar* srcData, const int srcH, const int srcW, 
     int idx3 = idx * 3;
 
     if ( ix > tgtW || iy > tgtH ) return;  // thread out of target range
-    // Padding của pose sample đang dùng 128 thay vì 114 như detect/segment.
-    // Đây là giả định cứng của ví dụ hiện tại, nên scale ngược vẫn phải theo cùng letterbox.
+    // This pose sample uses padding value 128 instead of 114 as in detect/segment.
+    // That is a hardcoded assumption in the current example, so reverse scaling must follow the same letterbox rule.
     if ( iy < startY || iy > (startY + rszH - 1) ) {
         tgtData[idx3] = 128;
         tgtData[idx3 + 1] = 128;
@@ -31,7 +31,7 @@ __global__ void letterbox(const uchar* srcData, const int srcH, const int srcW, 
     float scaleY = (float)rszH / (float)srcH;
     float scaleX = (float)rszW / (float)srcW;
 
-    // Từ pixel đích truy ngược về toạ độ ảnh nguồn để nội suy bilinear.
+    // Trace each destination pixel back to source-image coordinates for bilinear interpolation.
     float beforeX = float(ix - startX + 0.5) / scaleX - 0.5;
     float beforeY = float(iy - startY + 0.5) / scaleY - 0.5;
     int topY = static_cast<int>(beforeY);
@@ -41,14 +41,14 @@ __global__ void letterbox(const uchar* srcData, const int srcH, const int srcW, 
     float u = beforeX - leftX;
     float v = beforeY - topY;
 
-    if (topY >= srcH - 1 && leftX >= srcW - 1)  //右下角
+    if (topY >= srcH - 1 && leftX >= srcW - 1)  // bottom-right corner
     {
         for (int k = 0; k < 3; k++)
         {
             tgtData[idx3 + k] = (1. - u) * (1. - v) * srcData[(leftX + topY * srcW) * 3 + k];
         }
     }
-    else if (topY >= srcH - 1)  // 最后一行
+    else if (topY >= srcH - 1)  // last row
     {
         for (int k = 0; k < 3; k++)
         {
@@ -57,7 +57,7 @@ __global__ void letterbox(const uchar* srcData, const int srcH, const int srcW, 
             + (u) * (1. - v) * srcData[(rightX + topY * srcW) * 3 + k];
         }
     }
-    else if (leftX >= srcW - 1)  // 最后一列
+    else if (leftX >= srcW - 1)  // last column
     {
         for (int k = 0; k < 3; k++)
         {
@@ -66,7 +66,7 @@ __global__ void letterbox(const uchar* srcData, const int srcH, const int srcW, 
             + (1. - u) * (v) * srcData[(leftX + bottomY * srcW) * 3 + k];
         }
     }
-    else  // 非最后一行或最后一列情况
+    else  // general case when not on the last row or last column
     {
         for (int k = 0; k < 3; k++)
         {
@@ -101,7 +101,7 @@ void preprocess(const cv::Mat& srcImg, float* dstDevData, const int dstHeight, c
     int srcElements = srcHeight * srcWidth * 3;
     int dstElements = dstHeight * dstWidth * 3;
 
-    // Tạo hai vùng nhớ tạm để resize trên GPU rồi ghi tensor float đầu vào.
+    // Allocate two temporary buffers to resize on the GPU before writing the input float tensor.
     uchar* midDevData;
     cudaMalloc((void**)&midDevData, sizeof(uchar) * dstElements);
     // source images data on device
@@ -109,7 +109,7 @@ void preprocess(const cv::Mat& srcImg, float* dstDevData, const int dstHeight, c
     cudaMalloc((void**)&srcDevData, sizeof(uchar) * srcElements);
     cudaMemcpyAsync(srcDevData, srcImg.data, sizeof(uchar) * srcElements, cudaMemcpyHostToDevice, stream);
 
-    // Giữ aspect ratio và chèn padding ở cạnh còn lại giống detect.
+    // Preserve aspect ratio and insert padding on the remaining side, just like detect.
     int w, h, x, y;
     float r_w = dstWidth / (srcWidth * 1.0);
     float r_h = dstHeight / (srcHeight * 1.0);

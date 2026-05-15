@@ -7,15 +7,15 @@
 
 using namespace nvinfer1;
 
-// File này chỉ phục vụ build INT8 cho segment.
-// Dù runtime có thêm proto head, phần calibration vẫn chỉ cấp input batch cho builder.
+// This file only supports INT8 build flow for segment.
+// Even though runtime has an extra proto head, calibration still only provides input batches to the builder.
 
 
 std::vector<float> preprocess(cv::Mat& img, int input_w, int input_h)
 {
     int elements = 3 * input_h * input_w;
 
-    // Giữ đúng cùng quy tắc letterbox như pipeline inference của segment.
+    // Keep the exact same letterbox rules as the segment inference pipeline.
     int w, h, x, y;
     float r_w = input_w / (img.cols * 1.0);
     float r_h = input_h / (img.rows * 1.0);
@@ -36,7 +36,7 @@ std::vector<float> preprocess(cv::Mat& img, int input_w, int input_h)
     cv::Mat out(input_h, input_w, CV_8UC3, cv::Scalar(128, 128, 128));
     re.copyTo(out(cv::Rect(x, y, re.cols, re.rows)));
 
-    // TensorRT calibrator nhận float32 NCHW nên phải đổi layout ở đây.
+    // The TensorRT calibrator expects float32 NCHW, so the layout must be converted here.
     std::vector<float> result(elements);
     float* norm_data = result.data();  // normalized data
     uchar* uc_pixel = out.data;
@@ -62,7 +62,7 @@ Int8EntropyCalibrator2::Int8EntropyCalibrator2(int batch_size, int input_w, int 
     , read_cache_(read_cache)
 {
     input_count_ = 3 * input_w * input_h * batch_size;
-    // batch_data giữ batch trên host; device_input_ là binding được TensorRT đọc.
+    // batch_data stores the batch on the host; device_input_ is the binding TensorRT reads.
     batch_data = new float[input_count_];
     cudaMalloc(&device_input_, input_count_ * sizeof(float));
     read_files_in_dir(img_dir, img_files_);
@@ -100,7 +100,7 @@ bool Int8EntropyCalibrator2::getBatch(void* bindings[], const char* names[], int
     }
     img_idx_ += batch_size_;
 
-    // TensorRT dùng batch này để ước lượng scale INT8.
+    // TensorRT uses this batch to estimate INT8 scales.
     cudaMemcpy(device_input_, batch_data, input_count_ * sizeof(float), cudaMemcpyHostToDevice);
     bindings[0] = device_input_;
     return true;
@@ -108,7 +108,7 @@ bool Int8EntropyCalibrator2::getBatch(void* bindings[], const char* names[], int
 
 const void* Int8EntropyCalibrator2::readCalibrationCache(size_t& length) noexcept
 {
-    // Nếu cache tồn tại và được phép đọc, TensorRT sẽ bỏ qua lượt calibration ảnh.
+    // If the cache exists and can be read, TensorRT skips the image calibration pass.
     std::cout << "reading calib cache: " << calib_table_name_ << std::endl;
     calib_cache_.clear();
     std::ifstream input(calib_table_name_, std::ios::binary);

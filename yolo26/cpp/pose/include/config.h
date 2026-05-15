@@ -7,8 +7,8 @@
 
 const int kGpuId = 0;
 const int kNumClass = 1;
-const int kNumKpt = 17;  // 单个目标对应的关键点的个数
-const int kKptDims = 3;  // 单个关键点的维度，2 for x,y or 3 for x,y,visible
+const int kNumKpt = 17;  // Number of keypoints for a single object
+const int kKptDims = 3;  // Number of values per keypoint: 2 for x,y or 3 for x,y,visible
 const int kInputH = 640;
 const int kInputW = 640;
 const float kNmsThresh = 0.45f;
@@ -19,10 +19,10 @@ const int kNumBoxElement = 7 + kNumKpt * kKptDims;  // left, top, right, bottom,
 // const std::string trtFile = "./yolo26m-pose.plan";
 // const std::string testDataDir = "../images";
 
-// INT8 vẫn giữ compile-time vì pipeline calibration chưa được expose qua CLI.
+// INT8 remains compile-time only because the calibration pipeline is not exposed through the CLI.
 const bool bINT8Mode = false;
 const std::string cacheFile = "./int8.cache";
-const std::string calibrationDataPath = "../calibrator";  // 存放用于 int8 量化校准的图像
+const std::string calibrationDataPath = "../calibrator";  // Directory containing images used for INT8 calibration
 
 const std::vector<std::string> vClassNames {"person"};
 

@@ -17,10 +17,10 @@ const int kNumBoxElement = 6 + 32;  // left, top, right, bottom, confidence, cla
 // const std::string trtFile = "./yolo26m-seg.plan";
 // const std::string testDataDir = "../images";
 
-// INT8 vẫn giữ compile-time vì pipeline calibration chưa được expose qua CLI.
+// INT8 remains compile-time only because the calibration pipeline is not exposed through the CLI.
 const bool bINT8Mode = false;
 const std::string cacheFile = "./int8.cache";
-const std::string calibrationDataPath = "../calibrator";  // 存放用于 int8 量化校准的图像
+const std::string calibrationDataPath = "../calibrator";  // Directory containing images used for INT8 calibration
 
 const std::vector<std::string> vClassNames {
     "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light", "fire hydrant",

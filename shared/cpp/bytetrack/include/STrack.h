@@ -6,14 +6,14 @@
 using namespace cv;
 using namespace std;
 
-// Vòng đời một track trong ByteTrack.
+// Lifecycle of a track in ByteTrack.
 enum TrackState { New = 0, Tracked, Lost, Removed };
 
-// STrack là đơn vị stateful trung tâm của ByteTrack.
-// Nó giữ đồng thời ba biểu diễn bbox:
-// - _tlwh: quan sát gốc từ detector lúc track vừa được tạo/cập nhật
-// - tlwh: trạng thái hiện tại sau Kalman, dạng [top-left x, top-left y, width, height]
-// - tlbr: thuận tiện cho việc tính IoU, dạng [x1, y1, x2, y2]
+// STrack is the core stateful unit in ByteTrack.
+// It keeps three bbox representations at the same time:
+// - _tlwh: the original detector observation when the track is created/updated
+// - tlwh: the current post-Kalman state, in [top-left x, top-left y, width, height] format
+// - tlbr: convenient for IoU computation, in [x1, y1, x2, y2] format
 class STrack
 {
 public:
@@ -24,7 +24,7 @@ public:
     void static multi_predict(vector<STrack*> &stracks, byte_kalman::KalmanFilter &kalman_filter);
     void static_tlwh();
     void static_tlbr();
-    // xyah = [center_x, center_y, aspect_ratio, height] là hệ toạ độ Kalman của ByteTrack.
+    // xyah = [center_x, center_y, aspect_ratio, height] is ByteTrack's Kalman coordinate system.
     vector<float> tlwh_to_xyah(vector<float> tlwh_tmp);
     vector<float> to_xyah();
     void mark_lost();
@@ -44,14 +44,14 @@ public:
     vector<float> _tlwh;
     vector<float> tlwh;
     vector<float> tlbr;
-    // frame_id: frame mới nhất track được thấy hoặc dự đoán tới
-    // start_frame: frame track bắt đầu tồn tại
-    // tracklet_len: số lần update liên tiếp kể từ lần kích hoạt/re-activate gần nhất
+    // frame_id: most recent frame where the track was seen or predicted
+    // start_frame: frame where the track starts to exist
+    // tracklet_len: consecutive update count since the latest activate/re-activate
     int frame_id;
     int tracklet_len;
     int start_frame;
 
-    // mean/covariance là state Kalman 8 chiều: [x, y, a, h, vx, vy, va, vh].
+    // mean/covariance are the 8D Kalman state: [x, y, a, h, vx, vy, va, vh].
     KAL_MEAN mean;
     KAL_COVA covariance;
     float score;

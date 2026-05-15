@@ -1,7 +1,7 @@
 # -*- coding:utf-8 -*-
 
 """
-    onnx 模型转 tensorrt 模型，并使用 tensorrt python api 推理
+    Convert an ONNX model to a TensorRT engine and run inference through the TensorRT Python API
 """
 
 import os
@@ -80,7 +80,7 @@ def get_engine():
 
 def inference_one(data_input, context, buffer_h, buffer_d):
     """
-        使用tensorrt runtime 做一次推理
+        Run one inference pass with the TensorRT runtime
     """
     buffer_h[0] = np.ascontiguousarray(data_input)
     cudart.cudaMemcpy(buffer_d[0], buffer_h[0].ctypes.data, buffer_h[0].nbytes,

@@ -12,8 +12,8 @@
 
 using namespace nvinfer1;
 
-// Segment khác detect ở chỗ runtime phải quản lý thêm một output proto và bước
-// tái tạo mask từ tổ hợp tuyến tính giữa proto với 32 hệ số của từng detection.
+// Segment differs from detect because runtime must manage an extra proto output and an additional
+// mask reconstruction step built from the linear combination of the proto tensor and each detection's 32 coefficients.
 
 YoloDetector::YoloDetector(const std::string trtFile, const std::string onnxFile, Precision precision): trtFile_(trtFile), onnxFile_(onnxFile), precision_(precision)
 {
@@ -22,7 +22,7 @@ YoloDetector::YoloDetector(const std::string trtFile, const std::string onnxFile
 
     CHECK(cudaStreamCreate(&stream));
 
-    // Ưu tiên đọc .plan; nếu chưa có sẽ build từ ONNX giống detect/pose.
+    // Prefer reading a .plan file first; if it does not exist, build from ONNX just like detect/pose.
     get_engine();
 
     context = engine->createExecutionContext();
@@ -31,7 +31,7 @@ YoloDetector::YoloDetector(const std::string trtFile, const std::string onnxFile
     inputIndex_ = 0;
     protoIndex_ = 1;
     outputIndex_ = 2;
-    // TRT10: phân biệt hai output bằng số chiều.
+    // TRT10: distinguish the two outputs by tensor rank.
     // - proto: 4D [1, 32, 160, 160]
     // - detect: 3D [1, 116, 8400] = 4 bbox + 80 class + 32 mask coefficient
     for (int i = 0; i < engine->getNbIOTensors(); i++) {
@@ -86,7 +86,7 @@ YoloDetector::YoloDetector(const std::string trtFile, const std::string onnxFile
         outputSize *= outDims.d[i];
     }
 
-    // outputData chỉ giữ kết quả detect đã decode/NMS; proto vẫn nằm trên device.
+    // outputData only stores decoded/NMS detect results; the proto tensor remains on device.
     outputData = new float[1 + kMaxNumOutputBbox * kNumBoxElement];
     vBufferD.resize(3, nullptr);
     CHECK(cudaMalloc(&vBufferD[inputIndex_], 3 * kInputH * kInputW * sizeof(float)));
@@ -94,7 +94,7 @@ YoloDetector::YoloDetector(const std::string trtFile, const std::string onnxFile
     CHECK(cudaMalloc(&vBufferD[outputIndex_], outputSize * sizeof(float)));
 
     // transposeDevide: detect output [C, N] -> [N, C]
-    // decodeDevice: buffer detect đã gói gọn cả 32 mask coefficient mỗi box.
+    // decodeDevice: detect buffer that already includes the 32 mask coefficients for each box.
     CHECK(cudaMalloc(&transposeDevide, outputSize * sizeof(float)));
     CHECK(cudaMalloc(&decodeDevice, (1 + kMaxNumOutputBbox * kNumBoxElement) * sizeof(float)));
 }
@@ -117,7 +117,7 @@ void YoloDetector::get_engine(){
         if (engine == nullptr) { std::cout << "Failed loading engine!" << std::endl; return; }
         std::cout << "Succeeded loading engine!" << std::endl;
     } else {
-        // Nhánh build giữ cùng quy trình với detect/pose, chỉ khác ở graph ONNX có 2 output.
+        // The build path follows the same process as detect/pose; the only difference is that the ONNX graph has 2 outputs.
         IBuilder *            builder     = createInferBuilder(gLogger);
         INetworkDefinition *  network     = builder->createNetworkV2(
 #if NV_TENSORRT_MAJOR >= 10
@@ -206,10 +206,10 @@ YoloDetector::~YoloDetector(){
 std::vector<Detection> YoloDetector::inference(cv::Mat& img){
     if (img.empty()) return {};
 
-    // preprocess CUDA ghi thẳng tensor input lên device.
+    // CUDA preprocess writes the input tensor directly to device memory.
     preprocess(img, (float*)vBufferD[inputIndex_], kInputH, kInputW, stream);
 
-    // Cả detect head và proto head đều được enqueue trên cùng stream.
+    // Both the detect head and proto head are enqueued on the same stream.
 #if NV_TENSORRT_MAJOR >= 10
     context->setTensorAddress(inputName_.c_str(), vBufferD[inputIndex_]);
     context->setTensorAddress(protoName_.c_str(), vBufferD[protoIndex_]);
@@ -219,7 +219,7 @@ std::vector<Detection> YoloDetector::inference(cv::Mat& img){
     context->enqueueV2(vBufferD.data(), stream, nullptr);
 #endif
 
-    // detect output giữ bbox/class/mask coefficient; proto output dùng ở bước process_mask bên dưới.
+    // The detect output carries bbox/class/mask coefficients; the proto output is consumed by process_mask below.
     transpose((float*)vBufferD[outputIndex_], transposeDevide, OUTPUT_CANDIDATES, 4 + kNumClass + 32, stream);
     decode(transposeDevide, decodeDevice, OUTPUT_CANDIDATES, kNumClass, 32, kConfThresh, kMaxNumOutputBbox, kNumBoxElement, stream);
     nms(decodeDevice, kNmsThresh, kMaxNumOutputBbox, kNumBoxElement, stream);
@@ -236,13 +236,13 @@ std::vector<Detection> YoloDetector::inference(cv::Mat& img){
             memcpy(det.bbox, &outputData[pos], 4 * sizeof(float));
             det.conf = outputData[pos + 4];
             det.classId = (int)outputData[pos + 5];
-            // 32 hệ số này sẽ được nhân với proto để tái tạo mask riêng cho detection.
+            // These 32 coefficients are multiplied by the proto tensor to reconstruct a mask for this detection.
             memcpy(det.mask, &outputData[pos + 7], 32 * sizeof(float));
             vDetections.push_back(det);
         }
     }
 
-    // process_mask tiêu thụ proto tensor + 32 mask coefficient để tạo mask đúng kích thước ảnh gốc.
+    // process_mask consumes the proto tensor + 32 mask coefficients to build masks at original-image size.
     process_mask((float*)vBufferD[protoIndex_], protoOutDims, vDetections, kInputH, kInputW, img, stream);
     cudaStreamSynchronize(stream);
 
@@ -297,10 +297,10 @@ void YoloDetector::process_mask(
     int n = vDetections.size();
     if (n == 0) return;
 
-    // Mỗi detection đóng góp một vector coefficient dài 32.
+    // Each detection contributes one 32-value coefficient vector.
     float* maskCoefDevice = nullptr;
     CHECK(cudaMalloc(&maskCoefDevice, n * protoC * sizeof(float)));
-    // maskDevice sẽ giữ n mask ở độ phân giải proto.
+    // maskDevice holds n masks at proto resolution.
     float* maskDevice = nullptr;
     CHECK(cudaMalloc(&maskDevice, n * protoH * protoW * sizeof(float)));
 
@@ -315,17 +315,17 @@ void YoloDetector::process_mask(
     // mask = sigmoid(mask_coef [n,32] x proto [32,H*W]) -> [n,H*W].
     matrix_multiply(maskCoefDevice, n, protoC, protoDevice, protoC, protoH * protoW, maskDevice, stream, true);
 
-    // Bbox đang nằm ở hệ 640x640, còn proto ở 160x160 nên phải downsample theo cùng ratio.
+    // Bboxes live in 640x640 space while proto lives in 160x160 space, so the boxes must be downsampled by the same ratio.
     float heightRatio = (float)protoH / (float)kInputH;
     float widthRatio = (float)protoW / (float)kInputW;
     downsample_bbox(bboxDevice, n * 4, heightRatio, widthRatio, stream);
 
-    // Zero-out phần mask nằm ngoài bbox để hạn chế nhiễu nền.
+    // Zero out mask regions outside the bbox to reduce background noise.
     crop_mask(maskDevice, n, protoH, protoW, bboxDevice, stream);
 
-    // scale mask từ hệ proto về ảnh gốc:
-    // 1) cắt bỏ vùng padding do letterbox
-    // 2) bilinear resize về kích thước ảnh thật
+    // Scale the mask from proto space back to the original image:
+    // 1) remove the padding introduced by letterboxing
+    // 2) bilinearly resize to the true image size
     float r_w = protoW / (img.cols * 1.0);
     float r_h = protoH / (img.rows * 1.0);
     float r = std::min(r_w, r_h);
@@ -382,7 +382,7 @@ void YoloDetector::draw_image(cv::Mat& img, std::vector<Detection>& inferResult,
             cv::putText(img, labelStr, cv::Point(r.x, r.y - 2), cv::FONT_HERSHEY_PLAIN, 1.2, cv::Scalar(255, 255, 255), 2, cv::LINE_AA);
         }
 
-        // maskMatrix đã ở đúng kích thước ảnh gốc nên draw_mask chỉ còn nhiệm vụ tô đè.
+        // maskMatrix is already at original-image resolution, so draw_mask only needs to overlay it.
         draw_mask(img, inferResult[i].maskMatrix.data());
     }
 }

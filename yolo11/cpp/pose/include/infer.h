@@ -21,7 +21,7 @@ inline const char* precision_to_cli_name(Precision precision) {
     return precision == Precision::kFP16 ? "fp16" : "fp32";
 }
 
-// Detector cho pose giữ nguyên khung TensorRT của detect, nhưng decode ra bbox + class + keypoint.
+// The pose detector keeps the same TensorRT structure as detect, but decodes bbox + class + keypoints.
 class YoloDetector
 {
 public:
@@ -51,7 +51,7 @@ private:
     float *             transposeDevice;
     float *             decodeDevice;
 
-    // Với pose, head thường có shape [1, 56, 8400] = 4 bbox + 1 class + 51 keypoint values.
+    // For pose, the head usually has shape [1, 56, 8400] = 4 bbox + 1 class + 51 keypoint values.
     int                 OUTPUT_CANDIDATES;
 
     int                 inputIndex_;

@@ -1,8 +1,8 @@
 #include "postprocess.h"
 
-// Postprocess segment gồm hai nửa:
+// Segment postprocess has two halves:
 // 1) detect-style: transpose, decode, NMS
-// 2) mask-style: nhân coefficient với proto, crop, cắt padding letterbox và resize mask.
+// 2) mask-style: multiply coefficients by the proto tensor, crop, remove letterbox padding, and resize the mask.
 
 // ------------------ transpose --------------------
 __global__ void transpose_kernel(float* src, float* dst, int numBboxes, int numElements, int edge){
@@ -61,7 +61,7 @@ __global__ void decode_kernel(float* src, float* dst, int numBboxes, int numClas
     pout_item[4] = confidence;
     pout_item[5] = label;
     pout_item[6] = 1;  // 1 = keep, 0 = ignore
-    // Giữ nguyên 32 coefficient để bước process_mask ghép với proto sau NMS.
+    // Keep all 32 coefficients so process_mask can combine them with the proto tensor after NMS.
     for (int j = 0; j < numMasks; j++){
         pout_item[7 + j] = pitem[4 + numClasses + j];
     }
@@ -199,7 +199,7 @@ __global__ void crop_mask_kernel(float* masks, int maskNum, int maskHeight, int 
 }
 
 void crop_mask(float* masksDevice, int maskNum, int maskHeight, int maskWidth, float* bboxesDevice, cudaStream_t stream){
-    // Ghép nhiều mask cạnh nhau theo chiều ngang để một grid 2D có thể duyệt toàn bộ.
+    // Pack multiple masks side by side horizontally so a single 2D grid can sweep across them all.
     int maskWidthTotal = maskNum * maskWidth;
     dim3 blockSize(32, 32);
     dim3 gridSize((maskWidthTotal + blockSize.x - 1) / blockSize.x, (maskHeight + blockSize.y - 1) / blockSize.y);
@@ -264,7 +264,7 @@ __global__ void resize_kernel(float* masks, int maskNum, int maskHeight, int mas
     float scaleY = (float)dstMaskH / (float)maskHeight;
     float scaleX = (float)dstMaskW / (float)maskWidth;
 
-    // Nội suy bilinear mask sau khi đã cắt bỏ padding letterbox.
+    // Bilinearly interpolate the mask after letterbox padding has been removed.
     float beforeX = float(ix + 0.5) / scaleX - 0.5;
     float beforeY = float(iy + 0.5) / scaleY - 0.5;
     int topY = static_cast<int>(beforeY);
